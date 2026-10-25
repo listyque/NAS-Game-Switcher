@@ -1,0 +1,78 @@
+[
+  {
+    "step_title": "Update NAS Game Switcher",
+    "items": [
+      {
+        "type": "description",
+        "desc": "Existing profiles, games, passwords and settings are preserved. Leave fields blank to keep their saved values. Before changing the server code, NGS backs up both databases; a backup failure stops startup. Private development databases cannot be upgraded with this package."
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_port",
+            "desc": "NGS server port (1024\u201365535)",
+            "defaultValue": "",
+            "validator": {
+              "allowBlank": true,
+              "regex": {
+                "expr": "/^[1-9][0-9]{3,4}$/",
+                "errorText": "Enter a port from 1024 to 65535"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_games",
+            "desc": "NAS games folder",
+            "defaultValue": ""
+          }
+        ]
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_installers",
+            "desc": "Installers folder (optional)",
+            "defaultValue": ""
+          }
+        ]
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_public_domain",
+            "desc": "HTTPS domain (blank for local network only)",
+            "defaultValue": ""
+          }
+        ]
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_http_port",
+            "desc": "NAS port for external HTTP 80",
+            "defaultValue": ""
+          }
+        ]
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_https_port",
+            "desc": "NAS port for external HTTPS 443",
+            "defaultValue": ""
+          }
+        ]
+      }
+    ]
+  }
+]

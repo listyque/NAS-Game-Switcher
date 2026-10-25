@@ -1,0 +1,93 @@
+{
+	admin off
+	servers {
+		max_header_size 16KB
+	}
+}
+
+(ngs_upstream) {
+	reverse_proxy app:8081 {
+		header_up X-NGS-Proxy-Token {$NGS_PROXY_TOKEN}
+		header_up X-NGS-Client-IP {http.request.remote.host}
+		header_up -X-NGS-Admin-Cookie
+		header_up -X-NGS-Admin-Access
+		header_up -X-NGS-Asset-Access
+	}
+}
+
+{$NGS_PUBLIC_DOMAIN} {
+	header {
+		-Server
+		Strict-Transport-Security "max-age=15552000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		Content-Security-Policy "frame-ancestors 'self'; base-uri 'self'; object-src 'none'"
+	}
+	route {
+		@root path /
+		redir @root /assets/ngs_launcher/client/ 302
+		@api {
+			path /tactic/ngs_launcher/ngs-api/v1/metadata /tactic/ngs_launcher/ngs-players/v1/accounts
+			method POST
+		}
+		handle @api {
+			request_body {
+				max_size 32KB
+			}
+			import ngs_upstream
+		}
+		@public {
+			method GET HEAD
+			path /assets/ngs_launcher/server-public-key.bin /assets/ngs_launcher/players-public.json /assets/ngs_launcher/updates.json /assets/ngs_launcher/releases/* /assets/ngs_launcher/client/*
+		}
+		handle @public {
+			import ngs_upstream
+		}
+		@assets {
+			method GET HEAD
+			path /assets/ngs_launcher/catalog.json /assets/ngs_launcher/installers.json /assets/ngs_launcher/known-games.json /assets/ngs_launcher/game/* /assets/ngs_launcher/catalog/* /assets/ngs_launcher/covers/* /assets/ngs_launcher/backgrounds/* /assets/ngs_launcher/images/* /assets/ngs_launcher/packages/*
+			header Authorization "Bearer *"
+		}
+		handle @assets {
+			route {
+				request_header -X-NGS-Asset-Access
+				forward_auth app:8081 {
+					uri /tactic/ngs_launcher/ngs-players/v1/assets
+					copy_headers X-NGS-Asset-Access
+					header_up X-NGS-Proxy-Token {$NGS_PROXY_TOKEN}
+					header_up X-NGS-Client-IP {http.request.remote.host}
+				}
+				@asset_denied not header X-NGS-Asset-Access NGS-Assets-v1
+				respond @asset_denied "Asset authorization required" 401
+				import ngs_upstream
+			}
+		}
+		handle {
+			route {
+				@cross_site header Sec-Fetch-Site cross-site
+				respond @cross_site "Cross-site admin request rejected" 403
+				@unsafe {
+					not method GET HEAD OPTIONS
+					not header Origin https://{$NGS_PUBLIC_DOMAIN}
+				}
+				respond @unsafe "Admin origin rejected" 403
+				request_header -X-NGS-Admin-Cookie
+				request_header -X-NGS-Admin-Access
+				forward_auth app:8081 {
+					uri /tactic/ngs_launcher/ngs-players/v1/admin
+					header_up X-NGS-Proxy-Token {$NGS_PROXY_TOKEN}
+					header_up X-NGS-Client-IP {http.request.remote.host}
+					copy_headers X-NGS-Admin-Cookie X-NGS-Admin-Access
+				}
+				@admin_denied not header X-NGS-Admin-Access NGS-Admin-v1
+				respond @admin_denied "Owner authorization required" 401
+				@new_cookie expression `{http.request.header.X-NGS-Admin-Cookie} != ""`
+				header @new_cookie +Set-Cookie {http.request.header.X-NGS-Admin-Cookie}
+				request_body {
+					max_size 256MB
+				}
+				import ngs_upstream
+			}
+		}
+	}
+}

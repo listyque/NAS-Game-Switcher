@@ -1,0 +1,26 @@
+#-- Start Entry --#
+insert = SearchType.create('sthpw/search_object')
+insert.set_value('class_name', """pyasm.search.SObject""")
+insert.set_value('code', """ngs_launcher/package_job""")
+insert.set_value('database', """{project}""")
+insert.set_value('description', """NGS HTTP packages v1""")
+insert.set_value('namespace', """ngs_launcher""")
+insert.set_value('schema', """public""")
+insert.set_value('search_type', """ngs_launcher/package_job""")
+insert.set_value('table_name', """package_job""")
+insert.set_value('title', """NGS HTTP packages""")
+#-- End Entry --#
+
+#-- Start Entry --#
+table = CreateTable('ngs_launcher/package_job')
+table.add('code',                     'varchar', length='80', not_null=True )
+table.add('description',              'text' )
+table.add('game_id',                  'varchar', length='80' )
+table.add('id',                       'serial', primary_key=True)
+table.add('published_data',           'text' )
+table.add('s_status',                 'varchar', length='32' )
+table.add('state',                    'varchar', length='16' )
+table.add('timestamp',                'timestamp' )
+table.add_constraint(["code"], mode="UNIQUE")
+#-- End Entry --#
+

@@ -1,0 +1,21 @@
+<manifest><data><code>ngs_launcher_plugin</code><title>NAS Game Switcher</title><version>1.0</version></data>
+<python path="preflight.py"/>
+<search_type code="ngs_launcher/api_device"/>
+<search_type code="ngs_launcher/package_job"/>
+<search_type code="ngs_launcher/player_profile"/>
+<search_type code="ngs_launcher/player_login"/>
+<search_type code="ngs_launcher/player_play"/>
+<search_type code="ngs_launcher/player_config"/>
+<search_type code="ngs_launcher/player_gate"/>
+<search_type code="ngs_launcher/game"/>
+<search_type code="ngs_launcher/catalog"/>
+<search_type code="ngs_launcher/api_service"/>
+<search_type code="ngs_launcher/catalog_config"/>
+<search_type code="ngs_launcher/app_release"/>
+<sobject search_type="config/custom_script" path="config_custom_script.spt" ignore_columns="id" unique="true"/>
+<sobject search_type="config/url" path="config_url.spt" ignore_columns="id" unique="true"/>
+<sobject search_type="config/widget_config" path="config_widget_config.spt" ignore_columns="id" unique="true"/>
+<sobject search_type="config/naming" path="config_naming.spt" ignore_columns="id" unique="true"/>
+<sobject search_type="config/prod_setting" path="config_prod_setting.spt" ignore_columns="id" unique="true"/>
+<python path="configure.py"/>
+</manifest>

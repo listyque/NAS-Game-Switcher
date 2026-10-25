@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "project": "ngs_launcher",
+  "version": "5.0.0.a02",
+  "kind": "clear",
+  "hashes": {
+    "install.py": "0bd7d1b7006b673023bfc16a7420c190bba540e4a63c7c8377ae3c9bc2161cc2"
+  },
+  "counts": {},
+  "files": [],
+  "personal_data": false
+}

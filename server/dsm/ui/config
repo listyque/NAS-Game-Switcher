@@ -1,0 +1,14 @@
+{
+  ".url": {
+    "com.ngs.Server": {
+      "type": "url",
+      "title": "NAS Game Switcher",
+      "desc": "Лаунчер и администрирование сервера NGS",
+      "icon": "images/ngs-{0}.png",
+      "protocol": "http",
+      "port": "8890",
+      "url": "/assets/ngs_launcher/client/",
+      "allUsers": false
+    }
+  }
+}

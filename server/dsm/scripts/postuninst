@@ -1,0 +1,3 @@
+#!/bin/sh
+# Own persistent data and game folders are retained.
+exit 0

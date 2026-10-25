@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<defs><linearGradient id="sea" x2=".2" y2="1"><stop stop-color="#317b83"/><stop offset=".4" stop-color="#174b62"/><stop offset="1" stop-color="#071b31"/></linearGradient></defs>
+<path fill="url(#sea)" d="M0 0h1600v1000H0z"/>
+<path d="m920 0-130 900 150-40L1230 0zm320 0-160 890 90-100L1430 0z" fill="#a8f1da" opacity=".07"/>
+<circle cx="1090" cy="480" r="204" fill="none" stroke="#80d5d4" stroke-width="37" opacity=".2"/>
+<path d="M926 560V348l50 13v218zm270 18V348l49-9v222zM925 354v-35l320-17v38z" fill="#28566b"/>
+<path d="m0 850 230-190 114 60 179-200 187 69 180 166 225-67 229 88 156-41v265H0z" fill="#103b52"/>
+<path d="m0 1000 190-159 200 70 158-46 144 71 350-86 276 65 282-23v108z" fill="#0b233b"/>
+<g fill="#80d8cf" opacity=".5"><circle cx="850" cy="388" r="3"/><circle cx="1220" cy="621" r="2"/><circle cx="1080" cy="311" r="3"/><circle cx="1287" cy="540" r="2"/><circle cx="740" cy="689" r="3"/></g>
+<path d="m1071 634 14-5 13 6-13 6z" fill="#d5fff1"/><path d="m1091 634 94 8-44-22z" fill="#a9f3e4" opacity=".12"/>
+</svg>

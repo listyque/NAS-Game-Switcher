@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+# Container Manager's resource worker starts/stops the project after these hooks.
+case "${1:-}" in
+  start) touch "$SYNOPKG_PKGVAR/.start-requested" ;;
+  stop) rm -f "$SYNOPKG_PKGVAR/.start-requested" ;;
+  status) [ -f "$SYNOPKG_PKGVAR/.start-requested" ] || exit 3 ;;
+  *) exit 0 ;;
+esac

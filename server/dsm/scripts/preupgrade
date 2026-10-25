@@ -1,0 +1,20 @@
+#!/bin/sh
+. "${SYNOPKG_TEMP_SCRIPTS_DIR:-$(dirname "$0")}/functions"
+[ "${SYNOPKG_PKGNAME:-}" = NGSServer ] || fail 'Invalid NGS package context'
+var="${SYNOPKG_PKGVAR:-/var/packages/NGSServer/var}"
+case "$var" in /*/?*) ;; *) exit 1;; esac
+expected=__NGS_PUBLIC_BOOTSTRAP__
+for path in "$var/data" "$var/data/tactic" "$var/data/postgres" "$var/.ngs-spk-seed" "$var/data/tactic/.ngs-migrated"; do
+  [ ! -L "$path" ] || fail 'Linked database marker rejected; existing data was not changed'
+done
+db="$var/data/postgres"
+if [ -d "$db" ]; then
+  contents="$(ls -A "$db" 2>/dev/null)" || fail 'Cannot inspect the existing NGS database'
+  if [ -n "$contents" ]; then
+    [ "$(cat "$db/PG_VERSION" 2>/dev/null)" = 16 ] || fail 'Unsupported database version; existing data was not changed'
+    [ "$(cat "$var/.ngs-spk-seed" 2>/dev/null)" = "$expected" ] &&
+      [ "$(cat "$var/data/tactic/.ngs-migrated" 2>/dev/null)" = "$expected" ] ||
+      fail 'This database is not from the public NGS package. Automatic migration is unavailable; existing data was not changed'
+  fi
+fi
+exit 0

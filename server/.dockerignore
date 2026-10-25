@@ -1,0 +1,17 @@
+*
+!Dockerfile
+!requirements.txt
+!apache.conf
+!container/
+!container/**
+!vendor/
+!vendor/tactic-5.0.tar.gz
+!plugin/
+!plugin/**
+
+container/test_bundle.py
+container/restore_files.py
+plugin/*.md
+plugin/*.ps1
+plugin/*.cmd
+**/__pycache__/

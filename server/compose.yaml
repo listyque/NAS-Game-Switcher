@@ -1,0 +1,97 @@
+name: ngs-server
+services:
+  db:
+    image: postgres:16.15-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    command: [postgres, -c, shared_buffers=128MB, -c, max_connections=60, -c, work_mem=4MB]
+    shm_size: 128m
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d postgres]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+  app:
+    image: ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.1
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db: {condition: service_healthy}
+    ports:
+      - '${NGS_BIND_IP:-127.0.0.1}:${NGS_PORT:-8890}:8081'
+    environment:
+      NGS_PUBLIC_DOMAIN: ${NGS_PUBLIC_DOMAIN:-}
+    secrets: [postgres_password, tactic_admin_password, ngs_proxy_token]
+    volumes:
+      - ./data/tactic:/opt/tactic/tactic_data
+      - ./data/assets:/opt/tactic/assets
+      - ./data/projects:/opt/tactic/projects
+      - ./bootstrap:/seed:ro
+      - ./client:/opt/ngs-client:ro
+      - ./backups:/backups
+      - type: bind
+        source: ${NGS_GAMES_PATH:-./empty-games}
+        target: /mnt/ngs-games
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${NGS_INSTALLERS_PATH:-./empty-installers}
+        target: /mnt/ngs-installers
+        read_only: true
+        bind: {create_host_path: false}
+    mem_limit: 3g
+    cpus: 2.0
+    healthcheck:
+      test: [CMD, curl, -fsS, -o, /dev/null, http://127.0.0.1:8081/tactic/]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+  gateway:
+    # Offline load restores tags; the bundle SHA256 pins the imported images.
+    image: caddy:2.11.7-alpine
+    profiles: [public]
+    restart: unless-stopped
+    init: true
+    depends_on:
+      app: {condition: service_healthy}
+    environment:
+      NGS_PUBLIC_DOMAIN: ${NGS_PUBLIC_DOMAIN:-}
+    entrypoint: [sh, /etc/ngs-public/entrypoint.sh]
+    ports:
+      - '${NGS_HTTP_PORT:-8088}:80'
+      - '${NGS_HTTPS_PORT:-8448}:443'
+    secrets: [ngs_proxy_token]
+    volumes:
+      - ./public:/etc/ngs-public:ro
+      - ./data/caddy:/data
+      - ./data/caddy-config:/config
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+secrets:
+  ngs_proxy_token:
+    file: ./secrets/ngs_proxy_token
+  postgres_password:
+    file: ./secrets/postgres_password
+  tactic_admin_password:
+    file: ./secrets/tactic_admin_password

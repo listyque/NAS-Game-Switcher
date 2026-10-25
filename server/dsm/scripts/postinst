@@ -1,0 +1,56 @@
+#!/bin/sh
+. "${SYNOPKG_TEMP_SCRIPTS_DIR:-$(dirname "$0")}/functions"
+validate
+# preinst verified the image; DSM's worker removes its archive after importing.
+new_seed="$(sha256sum "$dest/bootstrap/manifest.json" | cut -d' ' -f1)"
+if [ -f "$var/.ngs-spk-seed" ]; then
+  [ "$(cat "$var/.ngs-spk-seed")" = "$new_seed" ] || fail 'Existing NGS data belongs to another bootstrap; overwrite rejected'
+fi
+prepared="$dest/project/state"
+[ -f "$dest/project/docker-compose.yaml" ] && [ -d "$prepared" ] && [ ! -L "$prepared" ] || fail 'The NGS project was not prepared before Docker worker startup'
+for name in data secrets backups empty-games empty-installers; do
+  source="$prepared/$name"
+  [ -d "$source" ] || continue
+  if [ -L "$source" ]; then
+    [ "$(readlink "$source")" = "$var/$name" ] || fail 'Unexpected link in NGS data'
+    continue
+  fi
+  if [ -e "$var/$name" ]; then
+    case "$name" in
+      secrets)
+        for key in postgres_password tactic_admin_password ngs_proxy_token; do
+          cmp -s "$source/$key" "$var/secrets/$key" || fail 'Saved NGS keys differ; existing data was not changed'
+        done
+        rm "$source/postgres_password" "$source/tactic_admin_password" "$source/ngs_proxy_token" ;;
+      data)
+        for directory in postgres tactic assets projects caddy caddy-config; do rmdir "$source/$directory" || fail 'Prepared NGS data is not empty'; done ;;
+    esac
+    rmdir "$source" || fail 'Prepared NGS data is not empty'
+  else
+    mv "$source" "$var/$name"
+  fi
+  ln -s "$var/$name" "$source"
+done
+chmod 0700 "$var/secrets"
+chmod 0600 "$var/secrets/postgres_password" "$var/secrets/tactic_admin_password" "$var/secrets/ngs_proxy_token"
+mkdir -p "$dest/ui"
+if [ -n "$public_domain" ]; then
+  sed '/"protocol":/d; /"port":/d; s#"/assets/ngs_launcher/client/"#"https://'$public_domain'/assets/ngs_launcher/client/"#' "$dest/ui/config.template" > "$dest/ui/config.new"
+else
+  sed "s/__NGS_PORT__/$port/g" "$dest/ui/config.template" > "$dest/ui/config.new"
+fi
+mv "$dest/ui/config.new" "$dest/ui/config"
+printf '%s\n' "$port" > "$var/port"
+printf '%s\n' "$new_seed" > "$var/.ngs-spk-seed"
+
+mkdir -p "$var/config"
+for name in port games installers public_domain http_port https_port; do
+  case "$name" in
+    port) value="$port";;
+    games) value="$games"; case "$value" in "$dest/project/state/empty-games"|"$var/empty-games") value='';; esac;;
+    installers) value="$installers"; case "$value" in "$dest/project/state/empty-installers"|"$var/empty-installers") value='';; esac;;
+    public_domain) value="$public_domain";; http_port) value="$http_port";; https_port) value="$https_port";;
+  esac
+  [ ! -L "$var/config/$name" ] || fail 'Linked saved configuration rejected'
+  printf '%s' "$value" > "$var/config/$name"
+done

@@ -1,0 +1,37 @@
+#-- Start Entry --#
+insert = SearchType.create('sthpw/search_object')
+insert.set_value('class_name', """pyasm.search.SObject""")
+insert.set_value('code', """ngs_launcher/game""")
+insert.set_value('database', """{project}""")
+insert.set_value('description', """NGS catalog schema v1""")
+insert.set_value('namespace', """ngs_launcher""")
+insert.set_value('schema', """public""")
+insert.set_value('search_type', """ngs_launcher/game""")
+insert.set_value('table_name', """game""")
+insert.set_value('title', """Games""")
+#-- End Entry --#
+
+#-- Start Entry --#
+table = CreateTable('ngs_launcher/game')
+table.add('accent',                   'varchar', length='7' )
+table.add('available_on_nas',         'boolean' )
+table.add('background_snapshot',      'varchar', length='256' )
+table.add('code',                     'varchar', length='256' )
+table.add('cover_snapshot',           'varchar', length='256' )
+table.add('description',              'text' )
+table.add('executable',               'text' )
+table.add('genre',                    'text' )
+table.add('id',                       'serial', primary_key=True)
+table.add('import_state',             'text' )
+table.add('metadata_url',             'text' )
+table.add('name',                     'varchar', length='256' )
+table.add('published_data',           'text' )
+table.add('revision',                 'integer' )
+table.add('s_status',                 'varchar', length='32' )
+table.add('source_folder',            'text' )
+table.add('status',                   'varchar', length='32' )
+table.add('subtitle',                 'text' )
+table.add('timestamp',                'timestamp' )
+table.add_constraint(["code"], mode="UNIQUE")
+#-- End Entry --#
+

@@ -1,0 +1,90 @@
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00001""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00002""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00003""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00004""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00005""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00006""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00007""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00008""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00009""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/prod_setting')
+insert.set_value('code', """SPT_PROD_SETTING00010""")
+insert.set_value('description', """Determines whether icons are in complete separate directories""")
+insert.set_value('key', """use_icon_separation""")
+insert.set_value('type', """string""")
+insert.set_value('value', """false""")
+#-- End Entry --#
+

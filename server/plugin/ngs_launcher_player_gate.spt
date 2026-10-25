@@ -1,0 +1,21 @@
+#-- Start Entry --#
+insert = SearchType.create('sthpw/search_object')
+insert.set_value('class_name', """pyasm.search.SObject""")
+insert.set_value('code', """ngs_launcher/player_gate""")
+insert.set_value('database', """{project}""")
+insert.set_value('description', """NGS player accounts v1; managed from D:/code/NGS""")
+insert.set_value('namespace', """ngs_launcher""")
+insert.set_value('schema', """public""")
+insert.set_value('search_type', """ngs_launcher/player_gate""")
+insert.set_value('table_name', """player_gate""")
+insert.set_value('title', """player_gate""")
+#-- End Entry --#
+
+#-- Start Entry --#
+table = CreateTable('ngs_launcher/player_gate')
+table.add('code',                     'varchar', length='160', not_null=True )
+table.add('data',                     'text', not_null=True )
+table.add('id',                       'serial', primary_key=True)
+table.add_constraint(["code"], mode="UNIQUE")
+#-- End Entry --#
+

@@ -1,0 +1,13 @@
+CherryPy==18.8.0
+Mako==1.1.4
+Pillow==10.4.0
+lxml==5.3.0
+psycopg2-binary==2.9.10
+pycryptodome==3.21.0
+pycryptodomex==3.21.0
+python-dateutil==2.9.0.post0
+pytz==2024.2
+PyYAML==6.0.2
+requests==2.32.3
+six==1.17.0
+tzdata==2024.2

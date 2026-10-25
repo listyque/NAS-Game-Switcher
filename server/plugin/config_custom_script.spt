@@ -1,0 +1,48 @@
+#-- Start Entry --#
+insert = SearchType.create('config/custom_script')
+insert.set_value('code', """SPT_CUSTOM_SCRIPT00001""")
+insert.set_value('description', """NGS metadata resolver v1; managed from D:/code/NGS""")
+insert.set_value('folder', """ngs""")
+insert.set_value('language', """python""")
+insert.set_value('script', """from ngs_launcher_plugin.backend_metadata import ngs_entry
+return ngs_entry(operation,value)""")
+insert.set_value('timestamp', """2026-10-15 22:15:09.591661""")
+insert.set_value('title', """metadata""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/custom_script')
+insert.set_value('code', """SPT_CUSTOM_SCRIPT00002""")
+insert.set_value('description', """NGS restricted metadata entry v1; managed from D:/code/NGS""")
+insert.set_value('folder', """ngs""")
+insert.set_value('language', """python""")
+insert.set_value('script', """from ngs_launcher_plugin.backend_api import ngs_entry
+return ngs_entry()""")
+insert.set_value('timestamp', """2026-10-15 23:06:24.631710""")
+insert.set_value('title', """api""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/custom_script')
+insert.set_value('code', """SPT_CUSTOM_SCRIPT00003""")
+insert.set_value('description', """NGS remote catalogizer v1""")
+insert.set_value('folder', """ngs""")
+insert.set_value('language', """python""")
+insert.set_value('script', """from ngs_launcher_plugin.backend_catalog import ngs_entry
+return ngs_entry(action,payload,device)""")
+insert.set_value('timestamp', """2026-10-16 21:26:35.707859""")
+insert.set_value('title', """catalog""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/custom_script')
+insert.set_value('code', """SPT_CUSTOM_SCRIPT00004""")
+insert.set_value('description', """NGS player accounts v1; managed from D:/code/NGS""")
+insert.set_value('folder', """ngs""")
+insert.set_value('language', """python""")
+insert.set_value('script', """from ngs_launcher_plugin.backend_players import ngs_entry
+return ngs_entry()""")
+insert.set_value('timestamp', """2026-10-18 13:20:37.594539""")
+insert.set_value('title', """players""")
+#-- End Entry --#
+

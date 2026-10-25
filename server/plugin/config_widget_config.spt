@@ -1,0 +1,89 @@
+#-- Start Entry --#
+insert = SearchType.create('config/widget_config')
+insert.set_value('category', """SideBarWdg""")
+insert.set_value('code', """WIDGET_CONFIG000000""")
+insert.set_value('config', """<config>
+  <project_view>
+    <element name="_home" title="Examples"/>
+    <element name="ngs_games"/>
+  </project_view>
+</config>
+""")
+insert.set_value('search_type', """SideBarWdg""")
+insert.set_value('timestamp', """2026-10-15 18:32:31.182206""")
+insert.set_value('view', """project_view""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/widget_config')
+insert.set_value('code', """SPT_WIDGET_CONFIG00004""")
+insert.set_value('config', """<config><table><element name="code"/><element name="name"/><element name="subtitle"/><element name="genre"/><element name="description"/><element name="source_folder"/><element name="executable"/><element name="status"/><element name="revision"/><element name="cover_snapshot"/><element name="background_snapshot"/><element name="metadata_url"/></table></config>""")
+insert.set_value('login', """admin""")
+insert.set_value('search_type', """ngs_launcher/game""")
+insert.set_value('timestamp', """2026-10-15 19:33:52.146652""")
+insert.set_value('view', """table""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/widget_config')
+insert.set_value('code', """SPT_WIDGET_CONFIG00005""")
+insert.set_value('config', """<config><edit><element name="code"/><element name="name"/><element name="subtitle"/><element name="genre"/><element name="description"/><element name="source_folder"/><element name="executable"/><element name="status"/><element name="revision"/><element name="cover_snapshot"/><element name="background_snapshot"/><element name="metadata_url"/></edit></config>""")
+insert.set_value('login', """admin""")
+insert.set_value('search_type', """ngs_launcher/game""")
+insert.set_value('timestamp', """2026-10-15 19:33:52.146652""")
+insert.set_value('view', """edit""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/widget_config')
+insert.set_value('category', """SideBarWdg""")
+insert.set_value('code', """SPT_WIDGET_CONFIG00006""")
+insert.set_value('config', """<config>
+  <definition>
+    <element name="ngs_games" title="NGS · Games">
+      <display class="LinkWdg">
+        <class_name>tactic.ui.panel.ViewPanelWdg</class_name>
+        <search_type>ngs_launcher/game</search_type>
+        <view>table</view>
+        <layout>default</layout>
+      </display>
+    </element>
+  </definition>
+  <definition/>
+</config>
+""")
+insert.set_value('search_type', """SideBarWdg""")
+insert.set_value('timestamp', """2026-10-15 19:37:52.209667""")
+insert.set_value('view', """definition""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/widget_config')
+insert.set_value('code', """SPT_WIDGET_CONFIG00039""")
+insert.set_value('config', """<config>
+  <table>
+    <element name="available_on_nas"/>
+  </table>
+  <table/>
+</config>
+""")
+insert.set_value('search_type', """ngs_launcher/game""")
+insert.set_value('timestamp', """2026-10-15 22:23:14.822851""")
+insert.set_value('view', """table""")
+#-- End Entry --#
+
+#-- Start Entry --#
+insert = SearchType.create('config/widget_config')
+insert.set_value('code', """SPT_WIDGET_CONFIG00040""")
+insert.set_value('config', """<config>
+  <edit>
+    <element name="available_on_nas"/>
+  </edit>
+  <edit/>
+</config>
+""")
+insert.set_value('search_type', """ngs_launcher/game""")
+insert.set_value('timestamp', """2026-10-15 22:23:14.822851""")
+insert.set_value('view', """edit""")
+#-- End Entry --#
+

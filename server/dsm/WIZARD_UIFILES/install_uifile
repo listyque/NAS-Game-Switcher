@@ -1,0 +1,108 @@
+[
+  {
+    "step_title": "NAS Game Switcher setup",
+    "items": [
+      {
+        "type": "description",
+        "desc": "Admin username: admin. Game folders are mounted read-only. Enter a shared folder or its full /volumeN path. Leave blank to start without this source."
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_port",
+            "desc": "NGS server port (1024–65535)",
+            "defaultValue": "8890",
+            "validator": {
+              "allowBlank": false,
+              "regex": {
+                "expr": "/^[1-9][0-9]{3,4}$/",
+                "errorText": "Enter a port from 1024 to 65535"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_games",
+            "desc": "NAS games folder",
+            "defaultValue": "Files/games"
+          }
+        ]
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_installers",
+            "desc": "Installers folder (optional)",
+            "defaultValue": ""
+          }
+        ]
+      },
+      {
+        "type": "password",
+        "subitems": [
+          {
+            "key": "wizard_admin_password",
+            "desc": "New admin password (12–128 characters)",
+            "validator": {
+              "allowBlank": false,
+              "minLength": 12,
+              "maxLength": 128
+            }
+          }
+        ]
+      },
+      {
+        "type": "password",
+        "subitems": [
+          {
+            "key": "wizard_admin_confirm",
+            "desc": "Confirm password",
+            "validator": {
+              "allowBlank": false
+            }
+          }
+        ]
+      },
+      {
+        "type": "description",
+        "desc": "Internet access without VPN (optional, can be configured later). Point your domain to the NAS and forward external ports 80/443 to the NAS ports below. Administration requires the NGS owner profile and a separate TACTIC login."
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_public_domain",
+            "desc": "HTTPS domain (blank for local network only)",
+            "defaultValue": ""
+          }
+        ]
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_http_port",
+            "desc": "NAS port for external HTTP 80",
+            "defaultValue": "8088"
+          }
+        ]
+      },
+      {
+        "type": "textfield",
+        "subitems": [
+          {
+            "key": "wizard_https_port",
+            "desc": "NAS port for external HTTPS 443",
+            "defaultValue": "8448"
+          }
+        ]
+      }
+    ]
+  }
+]

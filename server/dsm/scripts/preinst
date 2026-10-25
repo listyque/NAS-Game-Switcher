@@ -1,0 +1,42 @@
+#!/bin/sh
+. "${SYNOPKG_TEMP_SCRIPTS_DIR:-$(dirname "$0")}/functions"
+validate preinst
+temp="${SYNOPKG_PKGINST_TEMP_DIR:-}"
+[ -n "$temp" ] && [ -d "$temp" ] || fail 'DSM did not provide its temporary installation folder'
+stage="$temp"
+if [ ! -f "$stage/bootstrap/manifest.json" ]; then stage="$temp/package"; fi
+[ -d "$stage" ] && [ ! -L "$stage" ] || fail "Extracted NGS files were not found in $temp or $temp/package"
+[ -w "$stage" ] || fail 'The temporary NGS installation folder is not writable'
+printf '%s\n' "NGS preinst: payload=$stage" >&2
+for path in bootstrap/manifest.json images/ngs-images.tar.gz; do
+  [ -r "$stage/$path" ] || fail "Cannot read prepared NGS file: $path"
+done
+command -v sha256sum >/dev/null 2>&1 || fail 'sha256sum was not found on DSM'
+printf '%s\n' '__NGS_PREPARED_SHA256__' | (cd "$stage" && sha256sum -c -) || fail 'NGS package SHA256 check failed; see the package log'
+if [ -f "$var/.ngs-spk-seed" ]; then
+  seed="$(sha256sum "$stage/bootstrap/manifest.json" | cut -d' ' -f1)"
+  [ "$(cat "$var/.ngs-spk-seed")" = "$seed" ] || fail 'Existing NGS data belongs to another bootstrap; overwrite rejected'
+fi
+for name in secrets data backups config; do [ ! -L "$var/$name" ] || fail 'Linked persistent folder rejected'; done
+mkdir -p "$stage/project/state/secrets" "$stage/project/state/backups"
+for name in postgres tactic assets projects caddy caddy-config; do mkdir -p "$stage/project/state/data/$name"; done
+for name in postgres_password tactic_admin_password ngs_proxy_token; do
+  if [ -f "$var/secrets/$name" ]; then
+    cp "$var/secrets/$name" "$stage/project/state/secrets/$name"
+  elif [ "$name" != tactic_admin_password ]; then
+    count=36; [ "$name" != ngs_proxy_token ] || count=32
+    head -c "$count" /dev/urandom | od -An -v -tx1 | tr -d ' \n' > "$stage/project/state/secrets/$name"
+  else
+    printf '%s\n' "$wizard_admin_password" > "$stage/project/state/secrets/$name"
+  fi
+  chmod 0600 "$stage/project/state/secrets/$name"
+done
+chmod 0700 "$stage/project/state/secrets"
+[ "$(wc -c < "$stage/project/state/secrets/postgres_password")" -eq 72 ] || fail 'Invalid saved NGS database password'
+if [ "$games" = "$var/empty-games" ]; then games="$dest/project/state/empty-games"; mkdir -p "$stage/project/state/empty-games"; fi
+if [ "$installers" = "$var/empty-installers" ]; then installers="$dest/project/state/empty-installers"; mkdir -p "$stage/project/state/empty-installers"; fi
+if [ -n "$public_domain" ]; then
+  printf 'COMPOSE_PROFILES=public\nNGS_PUBLIC_DOMAIN=%s\nNGS_HTTP_PORT=%s\nNGS_HTTPS_PORT=%s\n' "$public_domain" "$http_port" "$https_port" > "$stage/project/.env"
+fi
+# COMPOSE_FROM_CANONICAL_SOURCE
+# DSM moves this already extracted directory into target before acquiring the worker.

@@ -1,0 +1,32 @@
+NAS Game Switcher — third-party notices
+
+The MIT License in LICENSE applies to NGS's own code. Dependencies and
+third-party artwork retain their respective copyrights and licenses.
+
+Windows client and NGS Input
+  Python: https://www.python.org/psf/license/
+  Qt / PySide / Shiboken: https://www.qt.io/licensing/
+    Source: https://code.qt.io/cgit/qt/
+    PySide source: https://code.qt.io/cgit/pyside/pyside-setup.git/
+    Version used by this preview: 6.11.2. Release LICENSES folders contain
+    the supplied license texts and notices. Qt remains dynamically linked.
+  PyCryptodome: https://www.pycryptodome.org/src/license
+  python-zstandard: https://github.com/indygreg/python-zstandard
+  Manrope: SIL Open Font License 1.1, included in assets/fonts/OFL.txt.
+    Source: https://github.com/google/fonts/tree/main/ofl/manrope
+
+NAS server
+  TACTIC: MIT License in the pinned upstream archive; full text in
+    reference/tactic-LICENSE.txt and in the server image.
+    Source: https://github.com/Southpaw-TACTIC/TACTIC
+    Exact upstream commit and archive checksum: server/tactic-source.json.
+    NGS's compatibility change is in server/container/patch_tactic.py.
+  PostgreSQL: https://www.postgresql.org/about/licence/
+  Caddy: Apache License 2.0, https://github.com/caddyserver/caddy
+  Ubuntu and the Python/server packages keep their own notices in the
+    container images. Server dependencies are listed in server/requirements.txt.
+
+The demonstration SVGs are NGS assets. Screenshots show real games and
+artwork from a user library, for illustrating NGS only. Game titles, logos
+and artwork belong to their respective owners; no games or game files
+are distributed with this project.

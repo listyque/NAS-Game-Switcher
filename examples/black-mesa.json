@@ -1,0 +1,11 @@
+{
+  "id": "black-mesa",
+  "name": "Black Mesa",
+  "subtitle": "Вернуться в Чёрную Мезу",
+  "genre": "Шутер · Приключение",
+  "accent": "#ffb169",
+  "description": "Эксперимент в исследовательском комплексе открывает путь в чужой мир. Гордон Фримен пробивается через лаборатории и инопланетные ландшафты. Переосмысление Half-Life от Crowbar Collective.",
+  "source_folder": "Black Mesa - Definitive Edition",
+  "executable": "bms.exe",
+  "metadata_url": "https://store.steampowered.com/app/362890/Black_Mesa/"
+}

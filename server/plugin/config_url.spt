@@ -1,0 +1,27 @@
+#-- Start Entry --#
+insert = SearchType.create('config/url')
+insert.set_value('code', """ngs_api_login""")
+insert.set_value('description', """NGS restricted metadata entry v1; managed from D:/code/NGS""")
+insert.set_value('timestamp', """2026-10-15 23:00:33.966406""")
+insert.set_value('url', """/login""")
+insert.set_value('widget', """<element index="false" admin="false"><display class="tactic.ui.panel.CustomLayoutWdg"><html><![CDATA[<%
+import cherrypy
+from pyasm.widget import WebLoginWdg2
+from tactic.command import PythonCmd
+body_html=''
+if cherrypy.request.path_info == '/tactic/ngs_launcher/ngs-api/v1/metadata':
+    PythonCmd(script_path='ngs/api').get_results()
+elif cherrypy.request.path_info == '/tactic/ngs_launcher/ngs-players/v1/accounts':
+    PythonCmd(script_path='ngs/players').get_results()
+elif cherrypy.request.path_info == '/tactic/ngs_launcher/ngs-players/v1/admin':
+    from ngs_launcher_plugin.admin_access import authorize
+    authorize()
+elif cherrypy.request.path_info == '/tactic/ngs_launcher/ngs-players/v1/assets':
+    from ngs_launcher_plugin.asset_access import authorize
+    authorize()
+else:
+    body_html=WebLoginWdg2(allow_change_admin=False,hide_back_btn=True).get_buffer_display()
+%>
+${body_html}]]></html></display></element>""")
+#-- End Entry --#
+

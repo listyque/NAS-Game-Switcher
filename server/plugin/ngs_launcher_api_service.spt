@@ -1,0 +1,22 @@
+#-- Start Entry --#
+insert = SearchType.create('sthpw/search_object')
+insert.set_value('class_name', """pyasm.search.SObject""")
+insert.set_value('code', """ngs_launcher/api_service""")
+insert.set_value('database', """{project}""")
+insert.set_value('description', """NGS restricted metadata entry v1; managed from D:/code/NGS""")
+insert.set_value('namespace', """ngs_launcher""")
+insert.set_value('schema', """public""")
+insert.set_value('search_type', """ngs_launcher/api_service""")
+insert.set_value('table_name', """api_service""")
+insert.set_value('title', """NGS internal service credential""")
+#-- End Entry --#
+
+#-- Start Entry --#
+table = CreateTable('ngs_launcher/api_service')
+table.add('code',                     'varchar', length='32', not_null=True )
+table.add('id',                       'serial', primary_key=True)
+table.add('login',                    'varchar', length='64', not_null=True )
+table.add('password',                 'varchar', length='128', not_null=True )
+table.add_constraint(["code"], mode="UNIQUE")
+#-- End Entry --#
+

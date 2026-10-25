@@ -1,0 +1,104 @@
+#!/bin/sh
+# DSM owns Docker operations through its docker-project resource worker.
+set -eu
+umask 077
+fail() { printf '%s\n' "$1" >&2; [ -z "${SYNOPKG_TEMP_LOGFILE:-}" ] || printf '%s\n' "$1" > "$SYNOPKG_TEMP_LOGFILE"; exit 1; }
+no_controls() { ! printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'; }
+package_context() {
+  [ "${SYNOPKG_PKGNAME:-}" = NGSServer ] || fail 'Invalid NGS package context'
+  if [ "${1:-postinst}" = preinst ]; then
+    # DSM need not expose final package paths before extracting package.tgz.
+    dest="${SYNOPKG_PKGDEST:-/var/packages/NGSServer/target}"
+    var="${SYNOPKG_PKGVAR:-/var/packages/NGSServer/var}"
+    # The var symlink is absent after uninstall, but DSM keeps @appdata on the selected volume.
+    if [ -z "${SYNOPKG_PKGVAR:-}" ] && [ ! -d "$var" ]; then
+      volume="${SYNOPKG_PKGDEST_VOL:-}"
+      if printf '%s' "$volume" | grep -Eq '^/volume[0-9]+$' && [ -d "$volume/@appdata/NGSServer" ]; then
+        var="$volume/@appdata/NGSServer"
+      fi
+    fi
+  else
+    dest="${SYNOPKG_PKGDEST:-/var/packages/NGSServer/target}"
+    var="${SYNOPKG_PKGVAR:-/var/packages/NGSServer/var}"
+    case "$dest" in /*/?*) ;; *) fail 'Invalid NGS package path';; esac
+    case "$var" in /*/?*) ;; *) fail 'Invalid NGS data path';; esac
+    [ -d "$dest" ] && [ -d "$var" ] || fail 'DSM has not prepared the package folders'
+  fi
+  no_controls "$dest$var" || fail 'Invalid package path'
+}
+nas_directory() {
+  value="$1"; fallback="$2"
+  [ -n "$value" ] || { printf '%s' "$fallback"; return; }
+  no_controls "$value" || fail 'Folder paths must not contain control characters'
+  case "/${value#/}/" in *'/../'*|*'/./'*|*'\'*|*'//'*) fail 'Enter a folder such as Games or /volume1/Games';; esac
+  case "$value" in
+    /*) candidate="$value" ;;
+    *) matches=0; candidate=''
+       for path in /volume[0-9]*/"$value"; do
+         if [ -d "$path" ]; then matches=$((matches+1)); candidate="$path"; fi
+       done
+       [ "$matches" = 1 ] || fail 'Folder not found or inaccessible. Enter its full /volumeN/share/Games path'
+       ;;
+  esac
+  printf '%s' "$candidate" | grep -Eq '^/volume(USB)?[0-9]+/[^/@][^/]*(/[^/]+)*$' || fail 'Choose a shared folder on a NAS volume'
+  if [ -d "$candidate" ]; then
+    candidate="$(readlink -f "$candidate")"
+    printf '%s' "$candidate" | grep -Eq '^/volume(USB)?[0-9]+/[^/@][^/]*(/[^/]+)*$' || fail 'The link points outside NAS shared folders'
+  else
+    ancestor="$candidate"
+    while [ "$ancestor" != / ] && [ ! -d "$ancestor" ]; do ancestor="${ancestor%/*}"; done
+    [ "$ancestor" != / ] && [ ! -x "$ancestor" ] || fail "Folder not found: $candidate"
+    # Docker binds the leaf without requiring the package user to traverse its parents.
+    printf '%s\n' "Folder is inaccessible to the installer; Container Manager will check it: $candidate" >&2
+  fi
+  for own in "$dest" "$var"; do
+    own="$(readlink -f "$own" 2>/dev/null || printf '%s' "$own")"
+    case "$candidate/" in "$own/"*) fail 'The games folder overlaps server data';; esac
+    case "$own/" in "$candidate/"*) fail 'The games folder overlaps server data';; esac
+  done
+  printf '%s' "$candidate"
+}
+validate() {
+  package_context "${1:-postinst}"
+  [ "$(uname -m)" = x86_64 ] || fail 'An x86-64 NAS with Container Manager is required'
+  saved() {
+    [ ! -L "$var/config/$1" ] || fail 'Linked saved configuration rejected'
+    if [ -f "$var/config/$1" ]; then
+      [ "$(wc -c < "$var/config/$1")" -le 4096 ] || fail 'Saved configuration is too long'
+      cat "$var/config/$1"
+    else printf '%s' "$2"; fi
+  }
+  port="${wizard_port:-$(saved port 8890)}"
+  case "$port" in ''|*[!0-9]*|0*) fail 'Port must be a number from 1024 to 65535';; esac
+  [ "${#port}" -le 5 ] && [ "$port" -ge 1024 ] && [ "$port" -le 65535 ] || fail 'Port must be from 1024 to 65535'
+  hex="$(printf '%04X' "$port")"
+  if awk -v target=":$hex" '$4=="0A" && substr($2,length($2)-4)==target {found=1} END {exit !found}' /proc/net/tcp /proc/net/tcp6; then
+    fail "Port $port is busy. Choose another port in NGS setup"
+  fi
+  if [ ! -f "$var/secrets/tactic_admin_password" ]; then
+    password="${wizard_admin_password:-}"
+    no_controls "$password" || fail 'Password must not contain control characters'
+    [ "${#password}" -ge 12 ] && [ "${#password}" -le 128 ] || fail 'The admin password must contain 12–128 characters'
+    [ "$password" = "${wizard_admin_confirm:-}" ] || fail 'Passwords do not match'
+  fi
+  public_domain="${wizard_public_domain:-$(saved public_domain '')}"
+  bind_ip=0.0.0.0
+  http_port="${wizard_http_port:-$(saved http_port 8088)}"; https_port="${wizard_https_port:-$(saved https_port 8448)}"
+  if [ -n "$public_domain" ]; then
+    printf '%s' "$public_domain" | grep -Eq '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$' || fail 'Enter only the HTTPS domain, without a scheme, port or path'
+    [ "${#public_domain}" -le 253 ] || fail 'Domain is too long'
+    for value in "$http_port" "$https_port"; do
+      case "$value" in ''|*[!0-9]*|0*) fail 'HTTP/HTTPS port must be a number from 1024 to 65535';; esac
+      [ "${#value}" -le 5 ] && [ "$value" -ge 1024 ] && [ "$value" -le 65535 ] || fail 'HTTP/HTTPS port must be from 1024 to 65535'
+    done
+    [ "$http_port" != "$https_port" ] && [ "$port" != "$http_port" ] && [ "$port" != "$https_port" ] || fail 'NGS, HTTP and HTTPS ports must be different'
+    bind_ip=127.0.0.1
+  fi
+  games="$(nas_directory "${wizard_games:-$(saved games '')}" "$var/empty-games")"
+  installers="$(nas_directory "${wizard_installers:-$(saved installers '')}" "$var/empty-installers")"
+}
+yaml_quote() {
+  printf "'"
+  printf '%s' "$1" | sed "s/'/''/g" | sed 's/\$/$$/g'
+  printf "'"
+}
