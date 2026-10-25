@@ -1,3 +1,5 @@
+**English** · [Русский](README.ru.md)
+
 # NGS Server · Preview
 
 Your game library on your own NAS. Windows clients download games over HTTP(S); source folders are mounted read-only. No SMB setup is required on the handheld.

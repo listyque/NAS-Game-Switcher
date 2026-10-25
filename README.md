@@ -1,3 +1,5 @@
+**English** · [Русский](README.ru.md)
+
 <div align="center">
   <img src="assets/ngs.svg" width="92" alt="NGS logo">
   <h1>NAS Game Switcher</h1>

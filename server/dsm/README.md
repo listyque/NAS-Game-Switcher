@@ -1,3 +1,5 @@
+**English** · [Русский](README.ru.md)
+
 # Synology package · Preview
 
 Install the SPK with Package Center → Manual Install. Requires an x86-64 NAS, DSM 7.2.1+ and Container Manager 20.10.23-1437+.
