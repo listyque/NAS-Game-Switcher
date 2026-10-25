@@ -1,0 +1,83 @@
+name: Build Synology release package
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Draft release ID
+        required: true
+permissions:
+  contents: write
+jobs:
+  package:
+    if: github.repository == 'listyque/NAS-Game-Switcher'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Download public server images
+        run: |
+          set -euo pipefail
+          docker pull ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.2
+          docker pull postgres:16.15-bookworm
+          docker pull caddy:2.11.7-alpine
+          mkdir -p server/images reports
+          docker image save -o server/images/ngs-images.tar ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.2 postgres:16.15-bookworm caddy:2.11.7-alpine
+      - name: Build and attach the verified SPK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          python - <<'PY'
+          import hashlib,http.client,json,os,re,tarfile
+          from pathlib import Path
+          from urllib.parse import quote,urlsplit
+          from urllib.request import Request,build_opener,HTTPRedirectHandler
+          from server.build_dsm import build
+          repo='listyque/NAS-Game-Switcher'
+          release_id=os.environ['RELEASE_ID']
+          assert re.fullmatch('[0-9]+',release_id)
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','User-Agent':'NGS-release-builder'}
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs):raise ValueError('Authenticated redirect rejected')
+          opener=build_opener(NoRedirect())
+          def api(path,method='GET'):
+              with opener.open(Request('https://api.github.com/'+path,headers=headers,method=method),timeout=30) as response:
+                  body=response.read(1024*1024)
+                  return json.loads(body) if body else None
+          release_path='repos/'+repo+'/releases/'+release_id
+          release=api(release_path)
+          assert release['draft'] and release['tag_name']=='v0.1.0-preview.2'
+          result=build();package=Path(result['path'])
+          assert result['kind']=='public' and result['seed_files']==0
+          with tarfile.open(package) as archive:
+              for name in ['scripts/preinst','scripts/preupgrade']:
+                  assert '__NGS_' not in archive.extractfile(name).read().decode()
+          def upload(path):
+              release=api(release_path);assert release['draft']
+              for old in release['assets']:
+                  if old['name']==path.name:api('repos/'+repo+'/releases/assets/'+str(old['id']),'DELETE')
+              url=urlsplit(release['upload_url'].split('{')[0])
+              assert url.scheme=='https' and url.hostname=='uploads.github.com'
+              assert url.path=='/repos/'+repo+'/releases/'+release_id+'/assets'
+              with path.open('rb') as stream:sha=hashlib.file_digest(stream,'sha256').hexdigest()
+              connection=http.client.HTTPSConnection(url.hostname,timeout=30);connection.connect();connection.sock.settimeout(120)
+              connection.putrequest('POST',url.path+'?name='+quote(path.name))
+              for key,value in dict(headers,**{'Content-Type':'application/octet-stream','Content-Length':str(path.stat().st_size)}).items():connection.putheader(key,value)
+              connection.endheaders()
+              with path.open('rb') as stream:
+                  while chunk:=stream.read(1024*1024):connection.send(chunk)
+              response=connection.getresponse();asset=json.loads(response.read(1024*1024));connection.close()
+              assert response.status==201,asset.get('message')
+              assert asset['size']==path.stat().st_size and asset['digest']=='sha256:'+sha
+              print(json.dumps(dict(name=path.name,size=asset['size'],sha256=sha)),flush=True)
+          upload(package)
+          assets=api(release_path)['assets']
+          expected={'NGS-Setup-2026.10.25.201421.exe','NGS-windows-x64-20261025-201421.zip','updates.json','NGS-Docker-0.1.0-preview.2.zip',package.name}
+          selected=[a for a in assets if a['name'] in expected]
+          assert {a['name'] for a in selected}==expected
+          for asset in selected:assert re.fullmatch('sha256:[0-9a-f]{64}',asset['digest'])
+          checksums=Path('dist/SHA256SUMS')
+          checksums.write_text(''.join(a['digest'][7:]+'  '+a['name']+'\n' for a in sorted(selected,key=lambda a:a['name'])),encoding='ascii')
+          upload(checksums)
+          PY
