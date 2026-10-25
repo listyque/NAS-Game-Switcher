@@ -1,7 +1,7 @@
 FROM ubuntu:22.04
 LABEL org.opencontainers.image.source="https://github.com/listyque/NAS-Game-Switcher" \
     org.opencontainers.image.title="NAS Game Switcher Server" \
-    org.opencontainers.image.version="0.1.0-preview.1"
+    org.opencontainers.image.version="0.1.0-preview.2"
 ENV DEBIAN_FRONTEND=noninteractive \
     TACTIC_INSTALL_DIR=/opt/tactic/tactic \
     TACTIC_DATA_DIR=/opt/tactic/tactic_data \
@@ -18,6 +18,7 @@ RUN curl --fail --location --retry 3 --output /tmp/tactic.tar.gz https://codeloa
     && rm /tmp/tactic.tar.gz \
     && cp -a /opt/tactic/tactic/src/install/data /opt/tactic/tacticenv
 COPY requirements.txt /opt/ngs/requirements.txt
+COPY LICENSE /opt/ngs/LICENSE
 RUN python3 -m pip install --no-cache-dir -r /opt/ngs/requirements.txt \
     && python3 -c "import tacticenv, psycopg2; from cherrypy._cpreqbody import Part; from Cryptodome.Signature import pkcs1_15; assert hasattr(Part, 'get_path')" \
     && useradd --uid 10001 --create-home --shell /bin/bash tactic \

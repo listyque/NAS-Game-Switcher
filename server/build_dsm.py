@@ -101,7 +101,7 @@ def build():
         'install_dep_packages':'ContainerManager>=20.10.23-1437','dsmuidir':'ui','dsmappname':'com.ngs.Server',
         'checkport':'no','ctl_stop':'yes','silent_install':'no','silent_upgrade':'no',
         'silent_uninstall':'yes','extractsize':'3145728','beta':'yes','checksum':digest(payload,'md5')}
-    target=ROOT/'dist/dsm/NGS-Synology-0.1.0-preview.1.spk'
+    target=ROOT/'dist/dsm/NGS-Synology-0.1.0-preview.2.spk'
     pending=target.with_suffix('.building.spk')
     with tarfile.open(pending,'w',format=tarfile.GNU_FORMAT) as tar:
         add(tar,'INFO',''.join(k+'='+json.dumps(v,ensure_ascii=False)+'\n' for k,v in info.items()).encode())

@@ -21,7 +21,7 @@ services:
       driver: json-file
       options: {max-size: 10m, max-file: '3'}
   app:
-    image: ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.1
+    image: ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.2
     restart: unless-stopped
     init: true
     depends_on:

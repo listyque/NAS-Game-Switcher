@@ -43,7 +43,7 @@ NGS turns a self-hosted game collection into a library designed for Windows hand
 
 ### Docker on your NAS
 
-1. Download and extract **NGS-Docker-0.1.0-preview.1.zip** from Releases.
+1. Download and extract **NGS-Docker-0.1.0-preview.2.zip** from Releases.
 2. Copy `.env.example` to `.env` and enter your game folder path.
 3. Run `sh start.sh` and choose an admin password.
 4. Open `http://NAS-IP:8890/assets/ngs_launcher/client/` and follow the connection instructions.
@@ -51,7 +51,7 @@ NGS turns a self-hosted game collection into a library designed for Windows hand
 ### Synology
 
 1. Install Container Manager on an x86-64 NAS running DSM 7.2.1 or later.
-2. In **Package Center → Manual Install**, select **NGS-Synology-0.1.0-preview.1.spk** from Releases.
+2. In **Package Center → Manual Install**, select **NGS-Synology-0.1.0-preview.2.spk** from Releases.
 3. Enter the game folder, port and admin password. Leave the domain blank if you only need LAN access.
 4. Open **NAS Game Switcher** from DSM, then connect the Windows client.
 

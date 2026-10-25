@@ -59,7 +59,7 @@ def verify_images():
 
 def main():
     out=FOLDER.parent/'dist/server';out.mkdir(parents=True,exist_ok=True)
-    files=[(name,FOLDER/name) for name in ['README.md','start.sh','compose.yaml','compose.sh','backup.sh','.env.example']]
+    files=[(name,FOLDER/name) for name in ['LICENSE','README.md','start.sh','compose.yaml','compose.sh','backup.sh','.env.example']]
     for directory in ['bootstrap','public']:
         files += [(p.relative_to(FOLDER).as_posix(),p) for p in sorted((FOLDER/directory).rglob('*')) if p.is_file()]
     files += [('client/index.html',FOLDER/'dsm/index.html')]
@@ -67,7 +67,7 @@ def main():
     assert manifest['personal_data'] is False and not manifest['files'] and set(manifest['hashes'])=={'install.py'}
     for directory in ['secrets','backups','empty-games','empty-installers']:
         files.append((directory+'/',b''))
-    result=create(out/'NGS-Docker-0.1.0-preview.1.zip',[('NGS-Server/'+name,value) for name,value in files])
+    result=create(out/'NGS-Docker-0.1.0-preview.2.zip',[('NGS-Server/'+name,value) for name,value in files])
     print(json.dumps(result,indent=2),flush=True)
 
 

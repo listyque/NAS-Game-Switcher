@@ -5,7 +5,7 @@ Your game library on your own NAS. Windows clients download games over HTTP(S); 
 ## Docker
 
 1. Install Docker Engine and Docker Compose on an x86-64 NAS or Linux PC.
-2. Extract **NGS-Docker-0.1.0-preview.1.zip** into a permanent folder.
+2. Extract **NGS-Docker-0.1.0-preview.2.zip** into a permanent folder.
 3. Copy `.env.example` to `.env`. Set `NGS_GAMES_PATH` to your existing games folder; optionally set `NGS_INSTALLERS_PATH`. Leave the empty-folder defaults to try NGS first.
 4. Run `sh start.sh` in that folder and choose an admin password.
 5. Wait until `docker compose ps` shows healthy services.
@@ -15,12 +15,12 @@ Your game library on your own NAS. Windows clients download games over HTTP(S); 
 
 The server owner is **admin**, with the password you chose. Registration creates player accounts; it does not grant catalog or administration access. Use the owner account to add games with the catalog manager. The separate TACTIC administration login also uses `admin` and your chosen installation password.
 
-The kit pulls `ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.1`, PostgreSQL 16.15 and Caddy 2.11.7. Keep its folder, `.env`, `data`, `secrets` and `backups`. Never publish these files. Do not share a Compose project name between installations.
+The kit pulls `ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.2`, PostgreSQL 16.15 and Caddy 2.11.7. Keep its folder, `.env`, `data`, `secrets` and `backups`. Never publish these files. Do not share a Compose project name between installations.
 
 ## Synology DSM
 
 1. Use an **x86-64 NAS**, **DSM 7.2.1+** and **Container Manager 20.10.23-1437+**.
-2. In Package Center choose **Manual Install** and select **NGS-Synology-0.1.0-preview.1.spk**.
+2. In Package Center choose **Manual Install** and select **NGS-Synology-0.1.0-preview.2.spk**.
 3. Choose your game folder, an unused port and an admin password. Installer folders are optional; domains can be left blank.
 4. Wait for the package to start, then open **NAS Game Switcher** in DSM.
 5. Install NGS on Windows, enter the displayed server address and copy the local pairing code from the app container log in Container Manager. Register or sign in.
@@ -42,4 +42,4 @@ HTTPS is required for Internet connections. The gateway checks the NGS owner pro
 
 Before updating Docker, run `sh backup.sh` and keep the resulting private backup safely. Update the image tag in `compose.yaml`, then run `sh start.sh`. Do not delete data volumes. On DSM install the newer public SPK over the existing package; saved folders, passwords and options are retained. A matching public bootstrap is required; private development databases are deliberately rejected. Before a changed server plugin starts, NGS saves both databases under `backups/before-update-*`; failed backups stop the update.
 
-The Windows client uses signed official GitHub update manifests and verifies package hashes. Client updates do not depend on a particular NAS. Source builds: from this directory run `docker build -t ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.1 .`. The Dockerfile fetches a pinned, checksum-verified upstream TACTIC commit; no personal database is needed.
+The Windows client uses signed official GitHub update manifests and verifies package hashes. Client updates do not depend on a particular NAS. Source builds: from this directory run `docker build -t ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.2 .`. The Dockerfile fetches a pinned, checksum-verified upstream TACTIC commit; no personal database is needed.

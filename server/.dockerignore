@@ -1,6 +1,7 @@
 *
 !Dockerfile
 !requirements.txt
+!LICENSE
 !apache.conf
 !container/
 !container/**

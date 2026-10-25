@@ -23,7 +23,7 @@ class GatewayTests(unittest.TestCase):
             try:
                 docker('network','create',name)
                 code="from http.server import HTTPServer,BaseHTTPRequestHandler\nclass Handler(BaseHTTPRequestHandler):\n def do_GET(self):\n  self.send_response(200);self.end_headers();self.wfile.write(b'legacy login HTML')\n def log_message(self,*args):pass\nHTTPServer(('0.0.0.0',8081),Handler).serve_forever()"
-                docker('run','-d','--rm','--name',app,'--network',name,'--network-alias','app','--entrypoint','python3','ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.1','-c',code)
+                docker('run','-d','--rm','--name',app,'--network',name,'--network-alias','app','--entrypoint','python3','ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.2','-c',code)
                 docker('run','-d','--rm','--name',gateway,'--network',name,'-p','127.0.0.1::80','-e','NGS_PROXY_TOKEN='+'a'*64,'-e','NGS_PUBLIC_DOMAIN=nas.example',
                        '--mount','type=bind,source='+str(path)+',target=/etc/caddy/Caddyfile,readonly','caddy:2.11.7-alpine')
                 address='http://'+docker('port',gateway,'80/tcp')
