@@ -35,6 +35,7 @@ InstallDir "$PROFILE\Games\NGS"
 InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NGS" "InstallLocation"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
+SetCompressorDictSize 64
 Icon "@ICON@"
 UninstallIcon "@ICON@"
 !define MUI_ABORTWARNING

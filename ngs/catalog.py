@@ -111,24 +111,13 @@ def atomic_write(path, data):
             Path(name).unlink()
 
 
-class CatalogCache:
-    def __init__(self, storage, base_url, installers=False):
-        parsed = urlsplit(base_url)
-        if (parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username
-                or parsed.password or parsed.query or parsed.fragment):
-            raise ValueError("Invalid catalog server URL.")
-        self.origin = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
-        self.installers = installers
+class ArtworkCache:
+    def __init__(self, storage):
         self.placeholder = storage.resources / "assets/local.svg"
         self.folder = storage.cache / "catalog"
         if not self.folder.resolve().is_relative_to(storage.root):
             raise ValueError("Catalog cache must stay inside NGS.")
         self.folder.mkdir(exist_ok=True)
-        # A different server must never inherit another server's offline catalog.
-        key = hashlib.sha256(self.origin.encode()).hexdigest()[:20]
-        self.index = self.folder / (key + ("-installers" if installers else "") + ".json")
-        from ngs.asset_auth import AssetAuthorization
-        self.opener = urllib.request.build_opener(_NoRedirect, AssetAuthorization(storage, self.origin))
 
     def image_path(self, digest):
         path = self.folder / (digest + ".image")
@@ -150,6 +139,45 @@ class CatalogCache:
             from ngs.diagnostics import event
             event('perf.image_hash', elapsed_ms=round(elapsed*1000, 1), bytes=info.st_size)
         return valid
+
+    def cache_image(self, image, data):
+        if len(data) != image["size"] or hashlib.sha256(data).hexdigest() != image["sha256"]:
+            raise ValueError("Catalog image checksum mismatch.")
+        from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+        from PySide6.QtGui import QImageReader
+        buffer = QBuffer()
+        buffer.setData(QByteArray(data))
+        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+        reader = QImageReader(buffer)
+        size = reader.size()
+        if (reader.format() not in (b"png", b"jpeg", b"webp") or not size.isValid()
+                or max(size.width(), size.height()) > 8192 or size.width() * size.height() > 16_000_000
+                or reader.read().isNull()):
+            raise ValueError("Invalid catalog image.")
+        atomic_write(self.image_path(image["sha256"]), data)
+
+
+    def cache_artwork(self, card, cancel=None, deadline=None, progress=None):
+        if any(not self.image_valid(card[key]) for key in ("cover", "background")):
+            raise ConnectionError("Cached artwork is unavailable. Connect to download it.")
+
+
+class CatalogCache(ArtworkCache):
+    def __init__(self, storage, base_url, installers=False):
+        parsed = urlsplit(base_url)
+        if (parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username
+                or parsed.password or parsed.query or parsed.fragment):
+            raise ValueError("Invalid catalog server URL.")
+        self.origin = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+        self.installers = installers
+        super().__init__(storage)
+        # A different server must never inherit another server's offline catalog.
+        key = hashlib.sha256(self.origin.encode()).hexdigest()[:20]
+        self.index = self.folder / (key + ("-installers" if installers else "") + ".json")
+        from ngs.asset_auth import AssetAuthorization
+        self.opener = urllib.request.build_opener(_NoRedirect, AssetAuthorization(storage, self.origin))
+
+
 
     def load(self):
         if not self.index.exists():
@@ -216,21 +244,6 @@ class CatalogCache:
             if progress:
                 progress("metadata_artwork", index + 1, 2, "Cover saved. Loading background…" if key == "cover" else "Images saved.")
 
-    def cache_image(self, image, data):
-        if len(data) != image["size"] or hashlib.sha256(data).hexdigest() != image["sha256"]:
-            raise ValueError("Catalog image checksum mismatch.")
-        from PySide6.QtCore import QBuffer, QByteArray, QIODevice
-        from PySide6.QtGui import QImageReader
-        buffer = QBuffer()
-        buffer.setData(QByteArray(data))
-        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
-        reader = QImageReader(buffer)
-        size = reader.size()
-        if (reader.format() not in (b"png", b"jpeg", b"webp") or not size.isValid()
-                or max(size.width(), size.height()) > 8192 or size.width() * size.height() > 16_000_000
-                or reader.read().isNull()):
-            raise ValueError("Invalid catalog image.")
-        atomic_write(self.image_path(image["sha256"]), data)
 
 
     def refresh(self, cancel=None):

@@ -84,11 +84,13 @@ class StoreGamesTests(unittest.TestCase):
               dict(name='Ambiguous',store='Steam',path=str(ambiguous),preferred_exe='',candidates=[],state='found')]
         before={p:p.read_bytes() for folder in (known,ambiguous) for p in folder.iterdir()}
         events=[]
-        result=import_store_games(storage,rows,[self.card],threading.Event(),events.append)
+        with patch('ngs.catalog.ArtworkCache.image_valid',return_value=True):
+            result=import_store_games(storage,rows,[self.card],threading.Event(),events.append)
         self.assertEqual([r['state'] for r in result['rows']],['added','manual'])
         library=LocalLibrary(storage)
         self.assertEqual(len(library.reconcile()),1)
-        repeated=import_store_games(storage,rows[:1],[self.card],threading.Event(),events.append)
+        with patch('ngs.catalog.ArtworkCache.image_valid',return_value=True):
+            repeated=import_store_games(storage,rows[:1],[self.card],threading.Event(),events.append)
         self.assertEqual(repeated['rows'][0]['state'],'already')
         library.forget(result['rows'][0]['game_id'])
         self.assertEqual({p:p.read_bytes() for p in before},before)

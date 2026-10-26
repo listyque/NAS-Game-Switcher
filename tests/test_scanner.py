@@ -64,7 +64,7 @@ class ScannerTests(unittest.TestCase):
         other = self.root / 'Another copy'
         other.mkdir()
         shutil.copyfile(self.game / 'bin/play.exe', other / 'play.exe')
-        with self.assertRaisesRegex(ValueError, 'уже в библиотеке'):
+        with self.assertRaisesRegex(ValueError, 'уже в библиотеке|already in the library'):
             self.library.register_external(other, 'play.exe', 'Same game', self.card)
         self.assertEqual(len(self.library.reconcile()), 1)
         self.assertTrue((other / 'play.exe').is_file())
@@ -165,7 +165,7 @@ class ScannerTests(unittest.TestCase):
         self.assertTrue(self.library.reconcile()[0]["available"])
         with (self.game / "bin/play.exe").open("ab") as stream:
             stream.write(b"new game update")
-        with self.assertRaisesRegex(ValueError, "Подтверди"):
+        with self.assertRaisesRegex(ValueError, "Подтверди|Confirm"):
             self.library.launch_spec(identity)
         self.assertEqual(self.add()["card"]["id"], identity)
         self.library.reconcile()

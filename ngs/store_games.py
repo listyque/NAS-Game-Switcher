@@ -216,7 +216,7 @@ def installed_store_games(cancel=None):
 
 
 def has_store_artwork(card, cache=None):
-    return bool(card.get('cover') and card.get('background') and card.get('description')
+    return bool(card.get('cover') and card.get('background') and (card.get('description') or card.get('id', '').startswith('custom-'))
                 and (cache is None or all(cache.image_valid(card[key]) for key in ('cover', 'background'))))
 
 
@@ -256,15 +256,16 @@ def store_game_card(row, cards, metadata):
 def import_store_games(storage, rows, cards, cancel, emit, *, url='', offline=False):
     library = LocalLibrary(storage)
     locations = {path_key(library.install_path(item)):item for item in library.reconcile()}
-    metadata = metadata_requests(storage, url, cancel, emit, offline=offline) if url else None
-    cache = CatalogCache(storage, url) if url else None
+    metadata = metadata_requests(storage, url, cancel, emit, offline=offline)
+    from ngs.catalog import ArtworkCache
+    cache = CatalogCache(storage, url) if url else ArtworkCache(storage)
     result = []
     for index, original in enumerate(rows):
         check_cancel(cancel)
         row = dict(original)
         try:
             existing = locations.get(path_key(row['path']))
-            if existing and (existing.get('kind') != 'external' or has_store_artwork(existing['card'], cache)):
+            if existing and (existing.get('kind') != 'external' or existing.get('metadata_manual') or has_store_artwork(existing['card'], cache)):
                 row.update(state='already', status=tr("Already in My games"), game_id=existing['card']['id'])
             else:
                 emit(dict(status=tr("Checking: ")+row['name'], done=index, total=len(rows)))
@@ -286,7 +287,7 @@ def import_store_games(storage, rows, cards, cancel, emit, *, url='', offline=Fa
                         except (RuntimeError, OSError) as error: message = str(error)
                     check_cancel(cancel)
                     if existing:
-                        receipt = library.update_external_metadata(existing['card']['id'], card) if card else existing
+                        receipt = library.update_external_metadata(existing['card']['id'], card, **(dict(manual=True) if row.get('metadata_manual') else {})) if card else existing
                     else:
                         launch = row.get('store_launch', {})
                         options = {}
@@ -294,6 +295,8 @@ def import_store_games(storage, rows, cards, cancel, emit, *, url='', offline=Fa
                         if launch and launch.get('executable', '').casefold() == choices[0]['path'].casefold():
                             options = dict(arguments=launch['arguments'], working_directory=launch['working_directory'])
                         receipt = library.register_external(row['path'], choices[0]['path'], row['name'], card, cancel, **options)
+                        if row.get('metadata_manual') and card:
+                            receipt = library.update_external_metadata(receipt['card']['id'], card, manual=True)
                     locations[path_key(row['path'])] = receipt
                     ready = card and has_store_artwork(card, cache)
                     row.update(state='added' if ready else 'artwork', status=tr("Cover and description added") if ready else tr("Artwork needed · ")+(message or tr("Connect to the server and try again.")), game_id=receipt['card']['id'])

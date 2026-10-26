@@ -286,7 +286,7 @@ class ServerImportTests(unittest.TestCase):
         for reference in ('12','epic:alan-wake-2','gog:123','lutris:game','wikipedia:en:123'):
             self.assertEqual(self.call('metadata_resolve',{'value':reference})['card'],changed['card'])
         duplicate=copy.deepcopy(payload);duplicate['card']['id']='gog-123';duplicate['expected']=None
-        with self.assertRaisesRegex(ValueError,'уже связана'): self.call('import',duplicate)
+        with self.assertRaisesRegex(ValueError,'уже связана|already linked'): self.call('import',duplicate)
 
     def test_same_folder_name_in_different_nas_roots_is_not_a_duplicate(self):
         from tools.catalogizer import encoded
@@ -305,7 +305,7 @@ class ServerImportTests(unittest.TestCase):
         self.assertNotEqual(first["card"]["source_root"], second["card"]["source_root"])
         records = self.call("inspect", {})["records"]
         self.assertEqual({r["card"]["source_root"] for r in records}, {str(self.root / "nas-one"), str(self.root / "nas-two")})
-        with self.assertRaisesRegex(ValueError, "уже связана"):
+        with self.assertRaisesRegex(ValueError, "уже связана|already linked"):
             self.call("import", payload("duplicate", self.root / "nas-one", "steam:14"))
         obj = self.objects["first"]
         published = json.loads(obj.get_value("published_data"))
@@ -408,7 +408,7 @@ class ServerImportTests(unittest.TestCase):
         self.objects['steam-12'].set_value('name', 'Changed concurrently')
         with self.assertRaisesRegex(ValueError, 'TACTIC'): self.call('import', self.payload(before['token']))
         duplicate = self.payload(); duplicate['card']['id'] = 'another-id'
-        with self.assertRaisesRegex(ValueError, 'уже связана'): self.call('import', duplicate)
+        with self.assertRaisesRegex(ValueError, 'уже связана|already linked'): self.call('import', duplicate)
         bad = self.payload(self.record()['token']); bad['card']['description'] = 'Replacement'
         bad['manifest'] = {'base64': base64.b64encode(b'{}').decode(), 'sha256': hashlib.sha256(b'{}').hexdigest()}
         with self.assertRaises(ValueError): self.call('import', bad)

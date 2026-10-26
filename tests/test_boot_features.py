@@ -116,10 +116,12 @@ class BootUiTests(unittest.TestCase):
         for value in (True,False):
             bridge.action.emit('activate')
             self.assertEqual(button.property('checked'),value)
+            QMetaObject.invokeMethod(pane,'save')
             self.assertEqual(self.storage.read_settings()['production_mode'],value)
             self.assertEqual(bridge.settingsState['production_mode'],value)
         for value in (True,False):
             button.setProperty('checked',value);QMetaObject.invokeMethod(button,'clicked')
+            QMetaObject.invokeMethod(pane,'save')
             self.assertEqual(self.storage.read_settings()['production_mode'],value)
             self.assertEqual(bridge.settingsState['production_mode'],value)
         self.assertFalse(bridge.setQuickOptions({'production_mode':'yes'}))

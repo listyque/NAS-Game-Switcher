@@ -34,6 +34,7 @@ ApplicationWindow {
             Text { width: parent.width; text: bridge.playerAccount.state.status; color: uiTheme.themeColors.muted; font.pixelSize: 18; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter }
             FluidButton { objectName: "loginAccountButton"; width: parent.width; height: 56; text: qsTranslate("NGS", "Sign in to NGS", "Войти в аккаунт NGS"); highlighted: loginGate.selectedAction === 0; onClicked: playerAccountPane.open() }
             FluidButton { objectName: "loginSettingsButton"; width: parent.width; height: 52; text: qsTranslate("NGS", "Settings · Server"); highlighted: loginGate.selectedAction === 1; onClicked: settingsPane.open() }
+            FluidButton { objectName: "loginLocalButton"; width: parent.width; height: 56; text: qsTranslate("NGS", "Use without a server"); highlighted: loginGate.selectedAction === 2; onClicked: bridge.useLocalLibrary() }
         }
     }
     property int section: bridge.initialUi.section
@@ -48,7 +49,7 @@ ApplicationWindow {
     readonly property string searchQuery: searchQueries[String(section)] || ""
     property int focusZone: 2
     property int navigationIndex: section === 3 ? 8 : section
-    readonly property var gameSections: [0, 1, 3]
+    readonly property var gameSections: bridge.localMode ? [0] : [0, 1, 3]
     property int statusIndex: 0
     readonly property var statusKeys: ["clock", "wifi", "bluetooth", "battery", "brightness", "volume"]
     readonly property int activeDownloads: downloadQueue.jobs.filter(job => job.state === "queued" || job.state === "running").length
@@ -73,8 +74,8 @@ ApplicationWindow {
     readonly property var filterSource: section === 1 ? bridge.catalogGames : sourceGames
     readonly property var filterGenres: Array.from(new Set(filterSource.map(game => String(game.genre || "").trim()).filter(value => value.length).concat(genreFilter ? [genreFilter] : []))).sort((a, b) => a.localeCompare(b))
     readonly property bool hasGames: displayGames.length > 0
-    readonly property var emptyGame: ({id: "", name: searchQuery ? qsTranslate("NGS", "Nothing found") : qsTranslate("NGS", "Game catalog"), subtitle: searchQuery ? qsTranslate("NGS", "Try another title") : activeFilterCount ? qsTranslate("NGS", "No games match these filters") : qsTranslate("NGS", "Your next adventure starts here"),
-        description: searchQuery ? qsTranslate("NGS", "No games in this section match “") + searchQuery + qsTranslate("NGS", "”. Clear the search or try another query.") : activeFilterCount ? qsTranslate("NGS", "Reset the filters to see all games.") : qsTranslate("NGS", "Published games appear after connecting to your server. The cached catalog is available offline."),
+    readonly property var emptyGame: ({id: "", name: searchQuery ? qsTranslate("NGS", "Nothing found") : bridge.localMode ? qsTranslate("NGS", "My games") : qsTranslate("NGS", "Game catalog"), subtitle: searchQuery ? qsTranslate("NGS", "Try another title") : activeFilterCount ? qsTranslate("NGS", "No games match these filters") : qsTranslate("NGS", "Your next adventure starts here"),
+        description: searchQuery ? qsTranslate("NGS", "No games in this section match “") + searchQuery + qsTranslate("NGS", "”. Clear the search or try another query.") : activeFilterCount ? qsTranslate("NGS", "Reset the filters to see all games.") : bridge.localMode ? qsTranslate("NGS", "Add a game folder or scan installed store games. Your library and playtime stay on this device. No server or account is required.") : qsTranslate("NGS", "Published games appear after connecting to your server. The cached catalog is available offline."),
         genre: "", accent: uiTheme.themeColors.accent, image: "", backgroundImage: ""})
     property var selected: displayGames[selectedIndex] || emptyGame
     readonly property bool actionEnabled: !bridge.operationBusy || (!selectedInstalled && !installerReady && bridge.downloadActive)
@@ -90,7 +91,11 @@ ApplicationWindow {
     readonly property bool canAct: hasGames && !selectedRemoving && !selectedUnavailable && (installerReady || selectedInstalled || !!selected.manifest || selected.delivery === "on_request")
     property int detailsAction: 0
     property bool detailsMore: false
-    readonly property var detailsButtons: [detailsPrimary, detailsBack, detailsRemove, detailsReveal, metadataButton, optionsButton, detailsAdd, detailsScroll, detailsMoreButton]
+    property bool detailsResetConfirm: false
+    property string detailsResetId: ""
+    property var detailsStatistics: ({total_seconds: 0, launches: 0, longest_seconds: 0, status: ""})
+    function duration(seconds) { const n = Math.max(0, Math.floor(seconds || 0)); return Math.floor(n / 3600) + ":" + String(Math.floor(n / 60) % 60).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0") }
+    readonly property var detailsButtons: [detailsPrimary, detailsBack, detailsRemove, detailsReveal, metadataButton, optionsButton, detailsAdd, detailsScroll, detailsMoreButton, detailsResetButton, detailsResetCancel]
     readonly property bool detailsLaunchSelected: detailsAction === 0
     property string removeId: ""
     property string removeName: ""
@@ -267,6 +272,7 @@ ApplicationWindow {
     }
     function openSearch() { if (section !== 2) { gameSearch.query = searchQuery; gameSearch.open() } }
     function changeSection(next) {
+        if (bridge.localMode && (next === 1 || next === 3)) next = 0
         section = (next + 4) % 4
         navigationIndex = section === 3 ? 8 : section
         focusZone = gridMode && section !== 2 ? 2 : section === 1 || (section !== 2 && hasGames) ? 2 : 1
@@ -311,10 +317,14 @@ ApplicationWindow {
         else if (item === "Quit") bridge.quit()
     }
     function openDetails() {
-        if (hasGames) { detailsMore = false; detailsAction = canAct && actionEnabled ? 0 : 8; details.open() }
+        if (hasGames) { detailsMore = false; detailsResetConfirm = false; detailsAction = canAct && actionEnabled ? 0 : 8; detailsStatistics = selectedInstaller ? ({}) : bridge.gameStatistics(selected.id); details.open() }
         else if (searchQuery) applySearch("")
         else if (activeFilterCount) applyFilters("all", "")
         else bridge.refreshCatalog()
+    }
+    function openEmptyLibrary() {
+        if (bridge.localMode) { changeSection(0); localScanner.openScanner() }
+        else changeSection(1)
     }
     function openLaunchOptions() {
         const identity = selected.id, name = selected.name
@@ -347,6 +357,7 @@ ApplicationWindow {
         localScanner.openScanner(identity)
     }
     function openCatalogizer(installers) {
+        if (bridge.localMode) { playerAccountPane.open(); return }
         catalogizerPane.bridge = installers ? window.bridge.installerCatalogizer : window.bridge.remoteCatalogizer
         catalogizerPane.open()
         catalogizerPane.bridge.openServer(window.bridge.settingsState.tactic_url)
@@ -416,10 +427,11 @@ ApplicationWindow {
         if ((settingsPane.visible && settingsPane.enabled)) { settingsPane.handleAction(action); return }
         if (bridge.loginRequired) {
             if (action === "up" || action === "down" || action === "left" || action === "right")
-                loginGate.selectedAction = 1 - loginGate.selectedAction
+                loginGate.selectedAction = (loginGate.selectedAction + (action === "up" || action === "left" ? 2 : 1)) % 3
             else if (action === "settings" || action === "menu") settingsPane.open()
             else if (action === "activate") {
                 if (loginGate.selectedAction === 1) settingsPane.open()
+                else if (loginGate.selectedAction === 2) bridge.useLocalLibrary()
                 else playerAccountPane.open()
             } else if (action === "back") bridge.quit()
             return
@@ -458,6 +470,8 @@ ApplicationWindow {
                 else if (detailsAction === 5) openLaunchOptions()
                 else if (detailsAction === 6) addInstalledGame()
                 else if (detailsAction === 8) { detailsMore = !detailsMore; detailsAction = detailsMore && optionsButton.visible ? 5 : 8 }
+                else if (detailsAction === 9) detailsResetButton.clicked()
+                else if (detailsAction === 10) detailsResetCancel.clicked()
                 else if (detailsAction !== 7) details.close()
             } else if (["left", "right", "up", "down"].indexOf(action) >= 0) {
                 if (detailsAction === 7 && (action === "up" || action === "down")) {
@@ -495,7 +509,7 @@ ApplicationWindow {
         else if (action === "toggle_installed" && (section === 1 || section === 3)) openCatalogizer(section === 3)
         else if (action === "refresh") { if (section === 0) bridge.refreshLocalLibrary(); else if (section === 3) bridge.refreshInstallers(); else bridge.refreshCatalog() }
         else if (action === "menu") {
-            if (hasGames && section !== 2 && focusZone > 0) openDetails(); else openMenu()
+            if (hasGames && section !== 2) openDetails(); else openMenu()
         } else if (action === "next_section") moveSection(1)
         else if (action === "previous_section") moveSection(-1)
         else if (action === "back") {
@@ -535,7 +549,7 @@ ApplicationWindow {
             else if (section === 2 && bridge.operationBusy) bridge.cancelOperation()
             else if (section === 2) changeSection(bridge.installedIds.length ? 0 : 1)
             else if (section === 3 && !hasGames) openCatalogizer(true)
-            else if (section === 0 && !hasGames) changeSection(1)
+            else if (section === 0 && !hasGames) openEmptyLibrary()
             else if (focusZone === 1) {
                 if (heroAction === 2 && selectedRemovable) openRemove()
                 else if (heroAction === 0 && canAct) runSelected()
@@ -773,6 +787,15 @@ ApplicationWindow {
             if (window.selectedIndex === index) window.runSelected()
             else window.selectedIndex = index
         }
+        HeaderButton {
+            objectName: "cardInfo-" + card.index
+            x: posterFace.x + posterFace.width - width - 8; y: posterFace.y + posterFace.height - height - 8
+            width: 36; height: 36; text: "i"; focusPolicy: Qt.NoFocus
+            font.pixelSize: 18; font.weight: Font.DemiBold
+            background: FluidSurface { radius: 18; color: uiTheme.themeColors.surface; border.width: 1; border.color: uiTheme.themeColors.line; shadowEnabled: false }
+            Accessible.name: qsTranslate("NGS", "Game information and statistics")
+            onClicked: { window.selectedIndex = card.index; window.focusZone = 2; window.openDetails() }
+        }
     }
 
     Item {
@@ -884,7 +907,8 @@ ApplicationWindow {
                 FluidButton {
                     required property string modelData
                     required property int index
-                    readonly property int targetSection: window.gameSections[index]
+                    readonly property int targetSection: [0, 1, 3][index]
+                    visible: !window.bridge.localMode || index === 0
                     x: index * 130
                     width: index === 2 ? 150 : 130; height: 52
                     text: modelData
@@ -1288,10 +1312,12 @@ ApplicationWindow {
             transform: Translate { x: (1 - emptyPage.opacity) * 32 }
             Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.InOutQuad } }
             Text { text: emptyPage.modelData === 0 ? qsTranslate("NGS", "Your games.\nAlways with you.") : qsTranslate("NGS", "Downloads.\nUnder control."); color: uiTheme.themeColors.text; font.pixelSize: 62; font.weight: Font.Bold; lineHeight: 1.1 }
-            Text { text: qsTranslate("NGS", "Download a game from the catalog or add an existing folder with X."); width: 540; wrapMode: Text.WordWrap; color: uiTheme.themeColors.muted; font.pixelSize: 19; lineHeight: 1.4 }
+            Text { text: window.bridge.localMode ? qsTranslate("NGS", "Add a game folder or scan installed store games. Your library and playtime stay on this device. No server or account is required.") : qsTranslate("NGS", "Download a game from the catalog or add an existing folder with X."); width: 540; wrapMode: Text.WordWrap; color: uiTheme.themeColors.muted; font.pixelSize: 19; lineHeight: 1.4 }
             ActionButton {
-                text: qsTranslate("NGS", "Open catalog"); filled: true; highlighted: window.focusZone === 1
-                onClicked: window.changeSection(1)
+                objectName: "emptyLibraryAction-" + emptyPage.modelData
+                width: Math.max(210, contentItem.implicitWidth + 40)
+                text: window.bridge.localMode ? qsTranslate("NGS", "Add a game from this device") : qsTranslate("NGS", "Open catalog"); filled: true; highlighted: window.focusZone === 1
+                onClicked: window.openEmptyLibrary()
             }
         }
         }
@@ -1321,12 +1347,12 @@ ApplicationWindow {
         Row {
             id: bottomHintsRow
             x: 68; y: parent.height - 43; spacing: 28
-            visible: !window.selectionHelp
-            opacity: window.hints.device === "gamepad" && !window.selectionHelp ? 0.85 : 0
+            visible: !window.selectionHelp || window.hints.device !== "gamepad"
+            opacity: visible ? 0.85 : 0
             transform: Translate { y: (1 - bottomHintsRow.opacity / 0.85) * 6 }
             Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
             Text { objectName: "acceptHint"; text: window.hints.activate + qsTranslate("NGS", "   Select"); color: uiTheme.themeColors.muted; font.pixelSize: 13 }
-            Text { visible: window.hasGames && window.section !== 2; text: window.hints.menu + qsTranslate("NGS", "   Details"); color: uiTheme.themeColors.muted; font.pixelSize: 13 }
+            HeaderButton { objectName: "detailsHint"; visible: window.hasGames && window.section !== 2; height: 30; y: -7; text: window.hints.menu + qsTranslate("NGS", "   Details"); font.pixelSize: 13; onClicked: window.openDetails() }
             Text { objectName: "backHint"; text: window.hints.back + qsTranslate("NGS", "   Back"); color: uiTheme.themeColors.muted; font.pixelSize: 13 }
             Text { objectName: "sectionsHint"; text: window.hints.sections + qsTranslate("NGS", "   Sections"); color: uiTheme.themeColors.muted; font.pixelSize: 13 }
         }
@@ -1338,7 +1364,7 @@ ApplicationWindow {
             color: uiTheme.themeColors.soft
             border.width: 1; border.color: uiTheme.themeColors.border
             property real reveal: 1
-            visible: !!window.selectionHelp
+            visible: !!window.selectionHelp && window.hints.device === "gamepad"
             opacity: reveal
             scale: 0.96 + 0.04 * reveal
             transform: Translate { y: (1 - selectionHelpBadge.reveal) * 8 }
@@ -1490,6 +1516,25 @@ ApplicationWindow {
                     coverObjectName: "detailsCover"; backgroundObjectName: "detailsBanner"
                     uiScale: window.toolScale; presenting: details.visible
                 }
+                Column {
+                    objectName: "gameStatistics"; width: parent.width; spacing: 10 * window.toolScale; visible: !window.selectedInstaller
+                    Text { text: qsTranslate("NGS", "Statistics on this device"); color: uiTheme.themeColors.muted; font.pixelSize: 18 * window.toolScale }
+                    Row {
+                        width: parent.width; spacing: 16 * window.toolScale
+                        Repeater {
+                            model: [{label: qsTranslate("NGS", "Total playtime"), value: window.duration(window.detailsStatistics.total_seconds)},
+                                    {label: qsTranslate("NGS", "Total launches"), value: String(window.detailsStatistics.launches || 0)},
+                                    {label: qsTranslate("NGS", "Longest session"), value: window.duration(window.detailsStatistics.longest_seconds)}]
+                            Column {
+                                required property var modelData
+                                width: (parent.width - parent.spacing * 2) / 3; spacing: 6
+                                Text { width: parent.width; wrapMode: Text.WordWrap; text: modelData.label; color: uiTheme.themeColors.muted; font.pixelSize: 14 * window.toolScale }
+                                Text { text: modelData.value; color: uiTheme.themeColors.text; font.pixelSize: 26 * window.toolScale }
+                            }
+                        }
+                    }
+                    Text { width: parent.width; visible: !!window.detailsStatistics.status; text: window.detailsStatistics.status || ""; wrapMode: Text.WordWrap; color: uiTheme.themeColors.muted }
+                }
                 Text { objectName: "detailsGameSize"; visible: window.selected.total_size !== undefined;
                     text: qsTranslate("NGS", "Game size: ") + installDestination.sizeLabel(window.selected.total_size); color: uiTheme.themeColors.accent; font.pixelSize: 17 * window.uiScale }
                 Text { text: window.selected.description; textFormat: Text.PlainText; width: Math.min(parent.width, 960 * window.toolScale); color: uiTheme.themeColors.text; font.pixelSize: 18 * window.toolScale; wrapMode: Text.WordWrap; lineHeight: 1.45 }
@@ -1551,11 +1596,31 @@ ApplicationWindow {
             }
             FluidButton {
                 id: metadataButton; objectName: "findMetadataButton"
-                width: 240 * window.uiScale; height: Math.max(48, 52 * window.uiScale)
-                visible: window.detailsMore && window.selectedExternal; enabled: !window.bridge.operationBusy
+                width: Math.min(parent.width, Math.max(240 * window.uiScale, implicitWidth)); height: Math.max(48, 52 * window.uiScale)
+                visible: window.selectedExternal; enabled: !window.bridge.operationBusy
                 highlighted: window.detailsAction === 4
-                text: qsTranslate("NGS", "Find artwork · ") + window.hints.refresh; focusPolicy: Qt.NoFocus
+                text: qsTranslate("NGS", "Change game / artwork"); focusPolicy: Qt.NoFocus
                 onClicked: { details.close(); window.bridge.findMetadata(window.selected.id) }
+            }
+            FluidButton {
+                id: detailsResetButton; objectName: "detailsResetStatistics"
+                visible: !window.selectedInstaller; enabled: !window.bridge.operationBusy
+                text: window.detailsResetConfirm ? qsTranslate("NGS", "Reset on this device") + "?" : qsTranslate("NGS", "Reset statistics")
+                highlighted: window.detailsAction === 9
+                height: Math.max(48, 52 * window.uiScale)
+                onClicked: {
+                    if (!window.detailsResetConfirm) { window.detailsResetId = window.selected.id; window.detailsResetConfirm = true; window.detailsAction = 10; return }
+                    if (window.bridge.resetLocalGameStatistics(window.detailsResetId)) {
+                        window.detailsResetConfirm = false
+                        window.detailsStatistics = window.bridge.gameStatistics(window.selected.id)
+                    }
+                }
+            }
+            FluidButton {
+                id: detailsResetCancel; objectName: "detailsResetCancel"
+                visible: window.detailsResetConfirm; text: qsTranslate("NGS", "Cancel", "Отмена")
+                highlighted: window.detailsAction === 10; height: Math.max(48, 52 * window.uiScale)
+                onClicked: { window.detailsResetConfirm = false; window.detailsAction = 9 }
             }
             }
         }
@@ -1609,6 +1674,12 @@ ApplicationWindow {
     TouchpadWindow { keyboard: window.bridge.keyboard; hints: window.hints; uiScale: window.bridge.settingsState.ui_scale; screen: window.screen }
     TouchpadWindow { rightSide: true; keyboard: window.bridge.keyboard; hints: window.hints; uiScale: window.bridge.settingsState.ui_scale; screen: window.screen }
     property bool autoBackupPrompted: false
+    Connections {
+        target: window.bridge
+        function onSettingsChanged() {
+            if (window.bridge.localMode && window.section !== 0) window.changeSection(0)
+        }
+    }
     Connections {
         target: window.bridge.playerAccount
         function onChanged() {

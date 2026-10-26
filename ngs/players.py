@@ -378,6 +378,7 @@ class PlayerAccounts(QObject):
 
     def origin(self): return server_origin(self.storage.read_settings()['tactic_url'])
     def active_account(self):
+        if getattr(self.parent(), 'localMode', False) is True: return {}
         if not self.account:
             return {}
         try:
@@ -453,6 +454,16 @@ class PlayerAccounts(QObject):
             self.account = value; remember_secret(value['token'])
             try: self.save()
             except OSError: self.message = tr("Signed in, but the token could not be saved in the NGS folder."); return
+            owner = self.parent()
+            if getattr(owner, 'localMode', False) is True:
+                try:
+                    updated = dict(owner.settings, local_mode=False)
+                    self.storage.write_settings(updated)
+                except OSError:
+                    self.failure(tr('Sign-in was saved, but local mode could not be switched. Try signing in again.'))
+                    return
+                owner.settings = updated
+                owner.settingsChanged.emit()
             self.message = tr("Signed in. Loading shared statistics…")
         elif action == 'logout':
             self._pull_at = 0.0

@@ -150,6 +150,8 @@ def validate_external(receipt):
         raise ValueError("Invalid local game card")
     if receipt.get("catalog_id"):
         game_id(receipt["catalog_id"])
+    if 'metadata_manual' in receipt and type(receipt['metadata_manual']) is not bool:
+        raise ValueError('Invalid artwork selection flag')
     if receipt.get("catalog_id") or any(key in card for key in ("cover", "background", "manifest")):
         validate_card(card)
     location = receipt["location"]

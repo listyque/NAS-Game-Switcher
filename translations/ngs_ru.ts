@@ -6353,5 +6353,47 @@ The application folder must be writable.</source>
       <source>Without HTTPS, copy the pairing code once from the NAS administration logs. Do not obtain it from an untrusted web page. Internet connections require HTTPS.</source>
       <translation>Без HTTPS один раз скопируйте код подключения из журнала администрирования NAS. Не берите его с непроверенной веб-страницы. Для подключения через интернет нужен HTTPS.</translation>
     </message>
+    <message><source>Choose English or Russian.</source><translation>Выберите английский или русский язык.</translation></message>
+    <message><source>Keyboard and quick settings options must be enabled or disabled.</source><translation>Параметры клавиатуры и верхнего меню должны быть включены или выключены.</translation></message>
+    <message><source>Startup must be enabled or disabled.</source><translation>Автозапуск должен быть включён или выключен.</translation></message>
+    <message><source>Could not change startup settings.</source><translation>Не удалось изменить настройки автозапуска.</translation></message>
+    <message><source>Choose Apply to save startup settings for the current Windows user.</source><translation>Нажмите «Применить», чтобы сохранить автозапуск для текущего пользователя Windows.</translation></message>
+    <message><source>Changes are not applied. Choose Apply to save them.</source><translation>Изменения не применены. Нажмите «Применить», чтобы сохранить их.</translation></message>
+    <message><source>Apply your changes before leaving?</source><translation>Применить изменения перед выходом?</translation></message>
+    <message><source>Discard changes</source><translation>Отбросить изменения</translation></message>
+    <message><source>Keep editing</source><translation>Продолжить редактирование</translation></message>
+    <message><source>Local library · no server required</source><translation>Локальная библиотека · сервер не нужен</translation></message>
+    <message><source>Local library mode must be enabled or disabled.</source><translation>Локальный режим должен быть включён или выключен.</translation></message>
+    <message><source>Close the game and wait for active operations before switching library mode.</source><translation>Закройте игру и дождитесь завершения текущих операций перед сменой режима библиотеки.</translation></message>
+    <message><source>Connect a NAS server to download games. Local games work without it.</source><translation>Подключите NAS для скачивания игр. Локальные игры работают без сервера.</translation></message>
+    <message><source>Sign-in was saved, but local mode could not be switched. Try signing in again.</source><translation>Вход сохранён, но переключить локальный режим не удалось. Попробуйте войти снова.</translation></message>
+    <message><source>Use without a server</source><translation>Использовать без сервера</translation></message>
+    <message><source>Add a game folder or scan installed store games. Your library and playtime stay on this device. No server or account is required.</source><translation>Добавьте папку игры или найдите установленные игры из магазинов. Библиотека и игровая статистика хранятся на этом устройстве. Сервер и аккаунт не нужны.</translation></message>
+    <message><source>Local library · games and statistics are saved on this device. A NAS server is optional.</source><translation>Локальная библиотека · игры и статистика сохраняются на этом устройстве. Подключать NAS необязательно.</translation></message>
+    <message><source>Connect a NAS server  ›</source><translation>Подключить NAS  ›</translation></message>
+    <message><source>NAS catalogs become available after connecting a server. Add games from this device in My games.</source><translation>Каталоги NAS станут доступны после подключения сервера. Локальные игры добавляются в разделе «Мои игры».</translation></message>
+    <message><source>Local library is active. Connect and sign in only if you want NAS downloads, shared statistics and server backups.</source><translation>Активна локальная библиотека. Подключение и вход нужны только для скачивания с NAS, общей статистики и резервных копий на сервере.</translation></message>
+    <message><source>Searching game providers…</source><translation>Поиск в игровых источниках…</translation></message>
+    <message><source>Loading description and artwork…</source><translation>Загрузка описания и оформления…</translation></message>
+    <message><source>No cached artwork yet. Connect to the Internet to download it.</source><translation>Оформления пока нет в кеше. Подключитесь к интернету для загрузки.</translation></message>
+    <message><source>Game providers are unavailable. Your local games remain playable; try artwork search again when connected.</source><translation>Игровые источники недоступны. Локальные игры остаются доступны; повторите поиск оформления при подключении к интернету.</translation></message>
+    <message><source>Cached artwork · offline.</source><translation>Оформление из кеша · без сети.</translation></message>
+    <message><source>Description and images saved on this device.</source><translation>Описание и изображения сохранены на этом устройстве.</translation></message>
+    <message><source>Review artwork</source><translation>Проверка оформления</translation></message>
+    <message><source>Game title or store link</source><translation>Название игры или ссылка на страницу магазина</translation></message>
+    <message><source>Use this game</source><translation>Выбрать эту игру</translation></message>
+    <message><source>Back to results</source><translation>К результатам</translation></message>
+    <message><source>Change game / artwork</source><translation>Изменить игру / оформление</translation></message>
+    <message><source>Saving artwork…</source><translation>Сохранение оформления…</translation></message>
+    <message><source>Review the cover and description, then confirm your choice.</source><translation>Проверьте обложку и описание, затем подтвердите выбор.</translation></message>
+    <message><source>Could not save artwork. </source><translation>Не удалось сохранить оформление. </translation></message>
+    <message><source>Add artwork manually</source><translation>Оформить вручную</translation></message>
+    <message><source>Enter a title up to 160 characters and a description up to 3,000 characters.</source><translation>Введите название до 160 символов и описание до 3000 символов.</translation></message>
+    <message><source>Choose a cover on this device.</source><translation>Выберите обложку на этом устройстве.</translation></message>
+    <message><source>Wait for the current operation to finish, then try saving again.</source><translation>Дождитесь завершения текущей операции и повторите сохранение.</translation></message>
+    <message><source>Statistics on this device</source><translation>Статистика на этом устройстве</translation></message>
+    <message><source>Game information and statistics</source><translation>Информация и статистика игры</translation></message>
+    <message><source>Could not read statistics: </source><translation>Не удалось прочитать статистику: </translation></message>
+    <message><source>The interface language changes after Apply, without restarting NGS or the game.</source><translation>Язык интерфейса меняется после «Применить», без перезапуска NGS и игры.</translation></message>
   </context>
 </TS>

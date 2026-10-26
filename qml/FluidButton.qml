@@ -36,10 +36,10 @@ Button {
         Scale {
             objectName: "fluidButtonScale"
             origin.x: control.width / 2; origin.y: control.height / 2
-            xScale: 1 + control.compression * .014 + control.emphasis * .008
-            yScale: 1 - control.compression * .075 + control.emphasis * .008
+            xScale: 1 - Math.max(0, control.compression) * .014
+            yScale: 1 - Math.max(0, control.compression) * .075
         },
-        Translate { y: control.compression * 1.5 }
+        Translate { y: Math.max(0, control.compression) * 1.5 }
     ]
     FocusFrame {
         anchors.fill: parent; z: 100

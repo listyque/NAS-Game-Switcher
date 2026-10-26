@@ -117,6 +117,17 @@ class PlayTime:
             self.previous = (0, 0, 0)
         event('play.reset_local', game_id=row['game_id'], session_id=session_id)
 
+    def reset_game(self, identity):
+        identity = game_id(identity)
+        with self.lock:
+            session_id = self.session['id'] if self.session is not None and self.session['game_id'] == identity else None
+        if session_id: return self.reset(session_id)
+        with closing(sqlite3.connect(self.path)) as db, db:
+            row = db.execute('SELECT id,active_ms,paused_ms FROM play_sessions WHERE game_id=? ORDER BY rowid DESC LIMIT 1',
+                             (identity,)).fetchone()
+            if row:
+                db.execute('INSERT OR REPLACE INTO play_resets VALUES (?,?,?,?,?)', (identity, *row, int(self.wall())))
+
     def snapshot(self):
         with self.lock:
             if self.session is None:
@@ -131,3 +142,20 @@ class PlayTime:
                         launches=count + (0 if reset else 1), paused_seconds=paused // 1000,
                         longest_seconds=max(longest, active) // 1000, started_at=reset[3] if reset else row['started_at'],
                         local_only=self.reset_info is not None)
+
+    def totals(self, identity):
+        identity = game_id(identity)
+        with self.lock:
+            if self.session is not None and self.session['game_id'] == identity:
+                return dict(self.snapshot(), local_only=True)
+        with closing(sqlite3.connect(self.path)) as db:
+            reset = db.execute('SELECT p.rowid,r.active_ms,p.active_ms FROM play_resets r '
+                               'JOIN play_sessions p ON p.id=r.session_id WHERE r.game_id=? AND p.game_id=r.game_id',
+                               (identity,)).fetchone()
+            count, total, longest = db.execute('SELECT COUNT(*),COALESCE(SUM(active_ms),0),COALESCE(MAX(active_ms),0) '
+                                              'FROM play_sessions WHERE game_id=? AND rowid>?',
+                                              (identity, reset[0] if reset else 0)).fetchone()
+        if reset:
+            elapsed = max(0, reset[2] - reset[1])
+            total += elapsed; longest = max(longest, elapsed)
+        return dict(total_seconds=total//1000, launches=count, longest_seconds=longest//1000, local_only=True)

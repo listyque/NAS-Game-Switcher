@@ -140,7 +140,7 @@ def restore_launcher_environment(saved):
 from ngs.gamepad import GamepadInput
 from ngs.catalog import CatalogCache
 from ngs.i18n import tr
-from ngs.install import LocalLibrary, Cancelled, fetch_manifest, sort_installs, game_folder_name
+from ngs.install import LocalLibrary, Cancelled, fetch_manifest, sort_installs, game_folder_name, check_cancel
 from ngs.process import GameProcess
 from ngs.play_time import PlayTime
 from ngs.players import PlayerAccounts
@@ -236,10 +236,13 @@ class LocalArtworkWorker(QThread):
         import re
         from ngs.metadata import metadata_reference
         cid = str(receipt.get("catalog_id") or "")
-        for prefix, pfx_out in (("steam-", ""), ("gog-", "gog:"), ("epic-", "epic:"), ("lutris-", "lutris:")):
+        for prefix, pfx_out in (("steam-", ""), ("gog-", "gog:"), ("epic-", "epic:"), ("lutris-", "lutris:"),
+                                ('wikipedia-en-', 'wikipedia:en:'), ('wikipedia-ru-', 'wikipedia:ru:')):
             if cid.startswith(prefix) and len(cid) > len(prefix):
                 try:
-                    return metadata_reference(pfx_out + cid[len(prefix):])
+                    reference = pfx_out + cid[len(prefix):]
+                    metadata_reference(reference)
+                    return reference
                 except ValueError:
                     pass
         murl = str(card.get("metadata_url") or "")
@@ -260,6 +263,8 @@ class LocalArtworkWorker(QThread):
                 card = receipt.get("card") if isinstance(receipt, dict) else None
                 if not isinstance(card, dict) or not card.get("id"):
                     continue
+                if receipt.get('metadata_manual') and str(receipt.get('catalog_id', '')).startswith('custom-'):
+                    continue
                 cover = card.get("cover")
                 bg = card.get("background")
                 has_valid_dicts = isinstance(cover, dict) and isinstance(bg, dict)
@@ -267,7 +272,7 @@ class LocalArtworkWorker(QThread):
                     str(cover.get("path", "")).startswith("/assets/ngs_launcher/pending/")
                     or str(bg.get("path", "")).startswith("/assets/ngs_launcher/pending/")
                 )
-                if has_valid_dicts and not pending_paths:
+                if has_valid_dicts and not pending_paths and card.get('description'):
                     if self.cache.image_valid(cover) and self.cache.image_valid(bg):
                         continue
                     try:
@@ -292,13 +297,13 @@ class LocalArtworkWorker(QThread):
                     None,
                 )
                 resolved_card = None
-                if matched is not None:
+                if matched is not None and (not receipt.get('metadata_manual') or matched['id'] == cid):
                     try:
                         self.cache.cache_artwork(matched, self.cancel, time.monotonic() + 30)
                         resolved_card = matched
                     except Exception:
                         resolved_card = None
-                if resolved_card is None and self.url:
+                if resolved_card is None:
                     if metadata is None:
                         metadata = metadata_requests(self.storage, self.url, self.cancel, lambda _info: None)
                     ref = self._infer_reference(receipt, card)
@@ -307,12 +312,12 @@ class LocalArtworkWorker(QThread):
                             resolved_card = metadata("resolve", ref, card.get("name", ""))["card"]
                         except Exception:
                             resolved_card = None
-                    if resolved_card is None:
+                    if resolved_card is None and not receipt.get('metadata_manual'):
                         query = search_title(card.get("name", ""))
                         if query:
                             matches = metadata("search", query, card.get("name", ""))
                             exact = [m for m in matches if title_key(m.get("name", "")) == tkey]
-                            pick = exact[0] if len(exact) == 1 else (matches[0] if len(matches) == 1 else None)
+                            pick = exact[0] if len(exact) == 1 else None
                             if pick:
                                 resolved_card = metadata("resolve", pick["app_id"], card.get("name", ""))["card"]
                 if resolved_card is not None and not self.cancel.is_set():
@@ -374,13 +379,14 @@ class GameWorker(QThread):
             elif self.mode == "scan":
                 result = scan_executables(self.card["path"], self.cancel)
             elif self.mode == "store_scan":
+                from ngs.catalog import ArtworkCache
                 result = installed_store_games(self.cancel)
-                cache = CatalogCache(self.bridge.storage, self.bridge.settings['tactic_url'])
+                cache = ArtworkCache(self.bridge.storage) if self.bridge.localMode else CatalogCache(self.bridge.storage, self.bridge.settings['tactic_url'])
                 locations = {path_key(self.bridge.library.install_path(row)):row for row in self.bridge.library.reconcile()}
                 for row in result['rows']:
                     existing = locations.get(path_key(row['path']))
                     if existing:
-                        missing = existing.get('kind') == 'external' and not has_store_artwork(existing['card'], cache)
+                        missing = existing.get('kind') == 'external' and not existing.get('metadata_manual') and not has_store_artwork(existing['card'], cache)
                         row.update(state='artwork' if missing else 'already', game_id=existing['card']['id'],
                                    status=tr("No artwork · get cover and description") if missing else tr("Already in My games"))
             elif self.mode == "store_import":
@@ -393,14 +399,28 @@ class GameWorker(QThread):
             elif self.mode == "import":
                 result = self.bridge.library.register_external(self.card["path"], self.card["exe"],
                          self.card["name"], self.card.get("metadata"), self.cancel)
+                if self.card.get('metadata_manual') and self.card.get('metadata'):
+                    result = self.bridge.library.update_external_metadata(result['card']['id'], self.card['metadata'], manual=True)
             elif self.mode in ("metadata_search", "metadata_resolve"):
                 result = client_metadata(self.bridge.storage, self.card["url"],
                                          self.mode.split("_")[1], self.card["value"], self.cancel, progress=self.progress,
                                          **({"offline": True} if self.card.get("offline") else {}))
                 if self.cancel.is_set():
                     raise Cancelled()
-                if self.mode == "metadata_resolve" and self.card.get("local_id"):
-                    self.bridge.library.update_external_metadata(self.card["local_id"], result["card"])
+                if self.mode == "metadata_resolve" and self.card.get("local_id") and not self.card.get('preview_only'):
+                    self.bridge.library.update_external_metadata(self.card["local_id"], result["card"], manual=True)
+            elif self.mode == 'metadata_apply':
+                check_cancel(self.cancel)
+                if self.card.get('local_id'):
+                    self.bridge.library.update_external_metadata(self.card['local_id'], self.card['metadata'], manual=True)
+                result = dict(card=self.card['metadata'], message=tr('Artwork saved.'))
+            elif self.mode == 'metadata_custom':
+                from ngs.metadata import custom_metadata
+                card = custom_metadata(self.bridge.storage, self.card['name'], self.card['description'],
+                                       self.card['cover'], self.card['background'], self.card['seed'], self.cancel)
+                if self.card.get('local_id'):
+                    self.bridge.library.update_external_metadata(self.card['local_id'], card, manual=True, rename=True)
+                result = dict(card=card, message=tr('Artwork saved.'))
             elif self.mode == "discard":
                 result = self.bridge.download_queue.discard(self.card["id"])
             else:
@@ -571,7 +591,7 @@ class LauncherBridge(QObject):
         except OSError:
             self._autostart = False
         self._gamepad_connected = False
-        self._input_device = "gamepad"
+        self._input_device = "keyboard"
         self._hide_installed = self.settings.get("hide_installed", False) is True
         self.library = LocalLibrary(storage)
         self.installer_library = LocalLibrary(storage, installers=True)
@@ -647,6 +667,7 @@ class LauncherBridge(QObject):
                          "batch_root": "", "batch_rows": [], "batch_review": ""}
         self._scanner.update(store_games=[], store_review='', store_scan=False, store_name='')
         self._metadata = {"query": "", "results": [], "status": tr("Choose a game in the search results."), "local_id": ""}
+        self._metadata_preview = None
         self.process = None
         self._sleeping = False
         self._power_error = ""
@@ -689,13 +710,16 @@ class LauncherBridge(QObject):
         self.offline_timer = QTimer(self)
         self.offline_timer.setInterval(60000)
         self.offline_timer.timeout.connect(self.retryOffline)
-        if not demo: self.offline_timer.start()
+        if not demo and not self.localMode: self.offline_timer.start()
         self._games = []
         self._catalog_status = tr("Refreshing catalog…")
         if demo:
             self._games = [dict(game, image=QUrl.fromLocalFile(str(storage.resources / "assets" / game["art"])).toString())
                            for game in DEMO_GAMES]
             self._catalog_status = tr("Demo catalog")
+        elif self.localMode:
+            self._catalog_online = False
+            self._catalog_status = tr("Local library · no server required")
         else:
             try:
                 if self.settings.get("tactic_project") != "ngs_launcher":
@@ -717,6 +741,7 @@ class LauncherBridge(QObject):
             if self.settings.get("auto_start_downloads", True) is not False:
                 QTimer.singleShot(0, self.pumpDownloads)
             QTimer.singleShot(0, self.pumpCleanup)
+            QTimer.singleShot(0, self.ensure_local_artwork)
 
     @Property("QVariantList", notify=gamesChanged)
     def catalogGames(self):
@@ -728,15 +753,42 @@ class LauncherBridge(QObject):
         return [card for card in self.catalogGames
                 if not self._hide_installed or card["id"] not in installed]
 
+    @Property(bool, notify=settingsChanged)
+    def localMode(self):
+        account = getattr(getattr(self, 'players', None), 'account', {})
+        return self.settings.get('local_mode', not bool(account)) is True
+
+    @Slot(result=bool)
+    def useLocalLibrary(self):
+        saved = self.applySettings(dict(self.settingsState, local_mode=True))
+        if not saved: self.players.failure(self.settingsStatus)
+        return saved
+
     @Property(bool, notify=runningChanged)
     def loginRequired(self):
-        return not self._demo and not self.players.authorized()
+        return not self._demo and not self.localMode and not self.players.authorized()
 
     def account_changed(self):
-        authorized = not self.loginRequired
+        authorized = not self.localMode and self.players.authorized()
         changed = authorized != self._authorized
         self._authorized = authorized
+        if self.localMode:
+            self.offline_timer.stop()
+            self.backup_timer.stop()
+            self.catalogizer.timer.stop()
+            self.installer_catalogizer.timer.stop()
+            self._catalog_online = False
+        elif not self._demo and not self._closing and not self._sleeping and not self.offline_timer.isActive():
+            self.offline_timer.start()
         if changed and authorized and not self._demo:
+            if self.cache is None:
+                try:
+                    self.cache = CatalogCache(self.storage, self.settings['tactic_url'])
+                    self.installer_cache = CatalogCache(self.storage, self.settings['tactic_url'], installers=True)
+                except (ValueError, OSError) as error:
+                    self._catalog_status = str(error)
+                    self.catalogStatusChanged.emit()
+                    return
             self.refreshCatalog(); self.pumpDownloads()
 
     @Property("QVariantList", notify=installersChanged)
@@ -881,6 +933,8 @@ class LauncherBridge(QObject):
             self.settingsChanged.emit()
             return False
         self.settings = updated
+        self._sync_runtime_options()
+        self._settings_status = tr('Settings saved.')
         self.schedule_settings_restart()
         self.settingsChanged.emit()
         self.schedule_backup()
@@ -889,8 +943,7 @@ class LauncherBridge(QObject):
     def schedule_settings_restart(self):
         state = self.settingsState
         self._restart_pending = ((state['graphics_api'], state['disable_performance_overlays']) != self._boot_graphics
-                                 or state['production_mode'] != self._boot_production
-                                 or state['language'] != self._boot_language)
+                                 or state['production_mode'] != self._boot_production)
         self.restart_timer.stop()
         if self._restart_pending:
             self._settings_status = (tr("Saved. NGS will restart automatically after the game closes.")
@@ -961,7 +1014,8 @@ class LauncherBridge(QObject):
         if repeat_speed not in REPEAT_SPEEDS:
             repeat_speed = "normal"
         known_url = self.settings.get("known_games_url", "")
-        result.update(language=self.settings.get('language') if self.settings.get('language') in ('en', 'ru') else 'en',
+        result.update(local_mode=self.localMode,
+                      language=self.settings.get('language') if self.settings.get('language') in ('en', 'ru') else 'en',
                       production_mode=self.settings.get('production_mode') is True, theme='light' if self.settings.get('theme') == 'light' else 'dark',
                       accent_color=self.settings.get('accent_color') if isinstance(self.settings.get('accent_color'), str) and self.settings.get('accent_color') in appearance.ACCENTS else 'green',
                       graphics_api=api if api in GRAPHICS_APIS else "d3d11",
@@ -1026,6 +1080,14 @@ class LauncherBridge(QObject):
 
     def _sync_runtime_options(self):
         state = self.settingsState
+        if state['language'] != self._boot_language:
+            from ngs.i18n import configure
+            configure(self.storage, state['language'])
+            self._boot_language = state['language']
+            if hasattr(self.parent(), 'retranslate'): self.parent().retranslate()
+            self.inputChanged.emit()
+        if self.artwork_worker is not None and state.get('resolve_local_metadata', True) is not True:
+            self.artwork_worker.cancel.set()
         if not self._demo:
             from ngs.diagnostics import configure_production
             configure_production(self.storage, state['production_mode'])
@@ -1141,7 +1203,20 @@ class LauncherBridge(QObject):
     @Slot("QVariantMap", result=bool)
     def applySettings(self, values):
         old_paths = self.storage.games, self.storage.game_staging
+        old_autostart = self._autostart
+        startup_changed = False
         try:
+            local_mode = values.get('local_mode', self.localMode)
+            if type(local_mode) is not bool:
+                raise ValueError(tr('Local library mode must be enabled or disabled.'))
+            if local_mode != self.localMode and self.artwork_worker is not None:
+                self.artwork_worker.cancel.set()
+            if local_mode != self.localMode and (self.process is not None or self.game_worker is not None
+                    or self.players.worker is not None or self.players.backup_worker is not None
+                    or self.worker is not None or self.installer_worker is not None
+                    or self.preview_worker is not None or self.cleanup_worker is not None
+                    or self.catalogizer.state['busy'] or self.installer_catalogizer.state['busy']):
+                raise ValueError(tr('Close the game and wait for active operations before switching library mode.'))
             scale = values.get("ui_scale", self.settings.get("ui_scale", 1.0))
             if type(scale) not in (int, float) or not math.isfinite(scale) or not 0.8 <= scale <= 1.2:
                 raise ValueError(tr("Interface scale must be between 80 and 120%."))
@@ -1165,17 +1240,35 @@ class LauncherBridge(QObject):
                 paths[plural] = path_list(value, plural, plural == "games_sources")
             source, directory = paths["games_sources"][0], paths["games_directories"][0]
             url = str(values["tactic_url"]).strip()
-            TacticClient(url, "ngs_launcher")
+            if not local_mode: TacticClient(url, "ngs_launcher")
             for path in paths["games_directories"]:
                 self.storage.install_directories(path)
             self.storage.set_games_directory(directory)
             address_changed = url != self.settings.get("tactic_url")
-            cache = CatalogCache(self.storage, url) if address_changed else self.cache
+            cache = self.cache
+            if address_changed:
+                try: cache = CatalogCache(self.storage, url) if url else None
+                except ValueError:
+                    if not local_mode: raise
+                    cache = None
             try:
-                games = cache.load() if address_changed else self._games
+                games = self._games
+                if address_changed: games = cache.load() if cache is not None else []
             except (ValueError, OSError):
                 games = []
             state_defaults = self.settingsState
+            language = values.get('language', state_defaults['language'])
+            if language not in ('en', 'ru'):
+                raise ValueError(tr('Choose English or Russian.'))
+            keyboard_changes = values.get('keyboard_options', {})
+            if not isinstance(keyboard_changes, dict) or any(
+                key not in ('enabled', 'overlay_enabled', 'edge_swipe_enabled', 'edge_auto_hide') or type(value) is not bool
+                for key, value in keyboard_changes.items()
+            ):
+                raise ValueError(tr('Keyboard and quick settings options must be enabled or disabled.'))
+            autostart = values.get('autostart', old_autostart)
+            if type(autostart) is not bool:
+                raise ValueError(tr('Startup must be enabled or disabled.'))
             if "production_mode" in values and type(values["production_mode"]) is not bool:
                 raise ValueError(tr("Production mode must be enabled or disabled."))
             anim = values.get("animation_speed", state_defaults["animation_speed"])
@@ -1219,10 +1312,19 @@ class LauncherBridge(QObject):
                            freeze_on_sleep=values.get("freeze_on_sleep", state_defaults["freeze_on_sleep"]) is not False,
                            auto_trim_game_memory=values.get("auto_trim_game_memory", state_defaults["auto_trim_game_memory"]) is True,
                            production_mode=values.get("production_mode", state_defaults["production_mode"]) is True,
-                           known_games_url=known_url)
+                           known_games_url=known_url, language=language, local_mode=local_mode,
+                           keyboard_options=self.virtual_keyboard.option_values(**keyboard_changes))
+            if autostart != old_autostart:
+                startup.set_enabled(self.storage.root, autostart)
+                startup_changed = True
+                if startup.enabled(self.storage.root) != autostart:
+                    raise OSError(tr('Could not change startup settings.'))
             self.storage.write_settings(updated)
+            startup_changed = False
+            self._autostart = autostart
             self.settings = updated
             self._sync_runtime_options()
+            self.virtual_keyboard.changed.emit()
             if address_changed:
                 self._catalog_online = None
                 self._catalog_refresh_at = self._installer_refresh_at = 0
@@ -1233,9 +1335,9 @@ class LauncherBridge(QObject):
                 if self.worker:
                     self.worker.cancel.set()
                 self.cache, self._games = cache, games
-                self.installer_cache = CatalogCache(self.storage, url, installers=True)
+                self.installer_cache = CatalogCache(self.storage, url, installers=True) if cache is not None else None
                 try:
-                    self._installer_games = self.installer_cache.load()
+                    self._installer_games = self.installer_cache.load() if self.installer_cache is not None else []
                 except (ValueError, OSError):
                     self._installer_games = []
                 self.installersChanged.emit()
@@ -1244,7 +1346,7 @@ class LauncherBridge(QObject):
                 self.gamesChanged.emit()
                 if self.worker is None:
                     self.refreshCatalog()
-            self._settings_status = tr("Saved. New jobs use these paths; existing games and jobs keep their folders.")
+            self._settings_status = tr("Settings saved.")
             self.schedule_settings_restart()
             event('settings.saved', server=url, games_directories=paths['games_directories'], ui_scale=scale)
             self.settingsChanged.emit()
@@ -1254,6 +1356,12 @@ class LauncherBridge(QObject):
             return True
         except (KeyError, ValueError, OSError) as error:
             self.storage.games, self.storage.game_staging = old_paths
+            if startup_changed and self._autostart == old_autostart:
+                try:
+                    startup.set_enabled(self.storage.root, old_autostart)
+                except OSError as rollback_error:
+                    error = OSError(f'{error}; {rollback_error}')
+                self.refreshAutostart()
             self._settings_status = str(error)
             self.settingsChanged.emit()
             return False
@@ -1436,6 +1544,13 @@ class LauncherBridge(QObject):
     def launchingGame(self):
         return self._launching
 
+    @Slot(str, result='QVariantMap')
+    def gameStatistics(self, identity):
+        try:
+            return dict(self.play_time.totals(self.launch_options_identity(identity)), status='')
+        except (ValueError, OSError, sqlite3.Error) as error:
+            return dict(total_seconds=0, launches=0, longest_seconds=0, status=tr('Could not read statistics: ') + str(error))
+
     @Property(bool, notify=freezeChanged)
     def gameFrozen(self):
         return self.process is not None and self.process.frozen is True
@@ -1456,6 +1571,18 @@ class LauncherBridge(QObject):
         except (OSError, sqlite3.Error, ValueError) as error:
             self._statistics_error = tr("Could not reset statistics: ") + str(error)
             self.runningChanged.emit()
+            return False
+        self.runningChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def resetLocalGameStatistics(self, identity):
+        if self.process is not None or self._closing: return False
+        try:
+            self.play_time.reset_game(self.launch_options_identity(identity))
+        except (OSError, sqlite3.Error, ValueError) as error:
+            self._operation_status = tr('Could not reset statistics: ') + str(error)
+            self.operationChanged.emit()
             return False
         self.runningChanged.emit()
         return True
@@ -1692,7 +1819,7 @@ class LauncherBridge(QObject):
         self._scanner.update(store_scan=True, store_review='', last_added='')
         rows = [row for row in self._scanner['store_games'] if not path or row['path'] == path]
         self.start_operation(dict(id='', name=tr("Adding store games"), rows=rows, cards=self._games,
-                                 url=self.settings['tactic_url'], offline=self._catalog_online is False), 'store_import')
+                                 url='' if self.localMode else self.settings['tactic_url'], offline=not self.localMode and self._catalog_online is False), 'store_import')
 
     @Slot(str)
     def reviewStoreGame(self, path):
@@ -1725,8 +1852,8 @@ class LauncherBridge(QObject):
                              status=tr("Checking the library folder…"))
         self.scannerChanged.emit()
         self.start_operation({"id": "", "name": tr("Library scan"), "path": path,
-                              "cards": [dict(card) for card in self._games], "url": self.settings["tactic_url"],
-                              "offline": self._catalog_online is False}, "scan_many")
+                              "cards": [dict(card) for card in self._games], "url": "" if self.localMode else self.settings["tactic_url"],
+                              "offline": not self.localMode and self._catalog_online is False}, "scan_many")
 
     @Slot(dict)
     def collection_progressed(self, event):
@@ -1771,6 +1898,7 @@ class LauncherBridge(QObject):
             return
         matches = [self._installer_import] if self._installer_import else matching_cards(self._scanner["path"], executable, self._games)
         self._scanner = dict(self._scanner, stage="confirm", exe=executable, matches=matches,
+                             manual_metadata_id='',
                              name=self._installer_import["name"] if self._installer_import else self._scanner.get('store_name') or Path(self._scanner["path"]).name,
                              status=tr("Confirm the title and executable. Files are preserved."))
         self.scannerChanged.emit()
@@ -1789,6 +1917,7 @@ class LauncherBridge(QObject):
         if identity and receipt is None:
             return
         query = search_title(receipt["card"]["name"] if receipt else self._scanner.get('store_name') or Path(self._scanner["path"]).name)
+        self._metadata_preview = None
         self._metadata = {"query": query, "results": [], "local_id": identity, "status": tr("Searching…")}
         self.metadataChanged.emit()
         self.metadataRequested.emit()
@@ -1798,22 +1927,80 @@ class LauncherBridge(QObject):
     def searchMetadata(self, query):
         if self.operationBusy:
             return
-        self._metadata = dict(self._metadata, query=query, results=[], cancelling=False, selected_name="",
+        self._metadata_preview = None
+        self._metadata = dict(self._metadata, query=query, results=[], cancelling=False, selected_name="", preview={}, applying=False,
                               status=tr("Searching providers · Steam / GOG / Epic / Lutris / Wikipedia…"))
         self.metadataChanged.emit()
-        self.start_operation({"id": "", "name": query, "value": query, "url": self.settings["tactic_url"],
-                              "offline": self._catalog_online is False}, "metadata_search")
+        self.start_operation({"id": "", "name": query, "value": query, "url": "" if self.localMode else self.settings["tactic_url"],
+                              "offline": not self.localMode and self._catalog_online is False}, "metadata_search")
 
     @Slot(str)
     def resolveMetadata(self, app_id):
+        self._resolve_metadata(app_id, False)
+
+    @Slot(str)
+    def previewMetadata(self, app_id):
+        self._resolve_metadata(app_id, True)
+
+    def _resolve_metadata(self, app_id, preview_only):
         if self.operationBusy or not any(r["app_id"] == app_id for r in self._metadata["results"]):
             return
         name = next(r["name"] for r in self._metadata["results"] if r["app_id"] == app_id)
-        self._metadata = dict(self._metadata, cancelling=False, selected_name=name, status=tr("Loading description and images…"))
+        self._metadata_preview = None
+        self._metadata = dict(self._metadata, cancelling=False, selected_name=name, preview={}, applying=False, status=tr("Loading description and images…"))
         self.metadataChanged.emit()
         self.start_operation({"id": "", "name": self._metadata["query"], "value": app_id,
-                              "local_id": self._metadata["local_id"], "url": self.settings["tactic_url"],
-                              "offline": self._catalog_online is False}, "metadata_resolve")
+                              "preview_only": preview_only,
+                              "local_id": self._metadata["local_id"], "url": "" if self.localMode else self.settings["tactic_url"],
+                              "offline": not self.localMode and self._catalog_online is False}, "metadata_resolve")
+
+    @Slot()
+    def clearMetadataPreview(self):
+        if self.operationBusy: return
+        self._metadata_preview = None
+        self._metadata = dict(self._metadata, preview={}, applying=False, status=tr('Choose a game in the search results.'))
+        self.metadataChanged.emit()
+
+    @Slot(result=bool)
+    def applyMetadataPreview(self):
+        if self.operationBusy or self._metadata_preview is None: return False
+        if self.loginRequired:
+            self._metadata = dict(self._metadata, status=tr('Sign in to NGS in Settings.'))
+            self.metadataChanged.emit()
+            return False
+        self._metadata = dict(self._metadata, applying=True, status=tr('Saving artwork…'))
+        self.metadataChanged.emit()
+        self.start_operation(dict(id='', name=self._metadata_preview['name'], metadata=dict(self._metadata_preview),
+                                  local_id=self._metadata['local_id']), 'metadata_apply')
+        return self.game_worker is not None
+
+    @Slot(result=bool)
+    def editCustomMetadata(self):
+        if self.game_worker:
+            if self.game_worker.mode not in ('metadata_search', 'metadata_resolve'): return False
+            self.cancelOperation()
+        receipt = next((r for r in self._installed if r['card']['id'] == self._metadata['local_id']), None)
+        card = receipt['card'] if receipt else next(iter(self._scanner['matches']), {})
+        self._metadata_custom_seed = dict(card, id=receipt.get('catalog_id') or card['id']) if receipt else dict(card)
+        artwork = self.local_card(dict(card=card)) if card else {}
+        import uuid
+        self._metadata = dict(self._metadata, custom_status='', custom_saving=False,
+                              custom=dict(preview=uuid.uuid4().hex, card=dict(card, name=card.get('name') or self._scanner.get('name') or self._metadata['query']),
+                                          artwork=dict(cover=artwork.get('image', ''), background=artwork.get('backgroundImage', ''))))
+        self.metadataChanged.emit()
+        return True
+
+    @Slot(str, str, str, str)
+    def saveCustomMetadata(self, name, description, cover, background):
+        if self.operationBusy or self.loginRequired:
+            self._metadata = dict(self._metadata, custom_status=tr('Wait for the current operation to finish, then try saving again.'))
+            self.metadataChanged.emit()
+            return
+        if not self._metadata.get('custom'): return
+        self._metadata = dict(self._metadata, custom_saving=True, custom_status=tr('Saving artwork…'))
+        self.metadataChanged.emit()
+        self.start_operation(dict(id='', name=name, description=description, cover=cover, background=background,
+                                  seed=dict(self._metadata_custom_seed), local_id=self._metadata['local_id']), 'metadata_custom')
 
     @Slot(str, str)
     def confirmLocalGame(self, name, catalog_id):
@@ -1822,13 +2009,15 @@ class LauncherBridge(QObject):
         card = next((g for g in self._scanner["matches"] if g["id"] == catalog_id), None)
         if self._scanner.get('store_review'):
             row = next(row for row in self._scanner['store_games'] if row['path'] == self._scanner['store_review'])
-            row = dict(row, name=name, preferred_exe=self._scanner['exe'], metadata=dict(card) if card else None)
+            row = dict(row, name=name, preferred_exe=self._scanner['exe'], metadata=dict(card) if card else None,
+                       metadata_manual=bool(card and card['id'] == self._scanner.get('manual_metadata_id')))
             self._scanner.update(store_scan=True, last_added='')
             self.start_operation(dict(id='', name=name, rows=[row], cards=self._games,
-                                     url=self.settings['tactic_url'], offline=self._catalog_online is False), 'store_import')
+                                     url='' if self.localMode else self.settings['tactic_url'], offline=not self.localMode and self._catalog_online is False), 'store_import')
             return
         self.start_operation({"id": "", "name": name, "path": self._scanner["path"],
-                              "exe": self._scanner["exe"], "metadata": dict(card) if card else None}, "import")
+                              "exe": self._scanner["exe"], "metadata": dict(card) if card else None,
+                              'metadata_manual': bool(card and card['id'] == self._scanner.get('manual_metadata_id'))}, "import")
 
     @Slot()
     def refreshLocalLibrary(self):
@@ -1907,7 +2096,7 @@ class LauncherBridge(QObject):
                 self.players.timer.start()
             if self._automatic_updates and not self.update_timer.isActive():
                 self.update_timer.start(3500)
-            if not self._demo and not self.offline_timer.isActive():
+            if not self.localMode and not self._demo and not self.offline_timer.isActive():
                 self.offline_timer.start()
             if self.process is not None and not self.process_timer.isActive():
                 self.process_timer.start()
@@ -1933,6 +2122,7 @@ class LauncherBridge(QObject):
 
     @Slot()
     def pumpCleanup(self):
+        if self.localMode: return
         if self._closing or self._sleeping or self.cleanup_worker is not None or self.game_worker is not None:
             return
         if not self.download_queue.cleanup_due(): return
@@ -1951,7 +2141,7 @@ class LauncherBridge(QObject):
             return
         jobs = self.download_queue.jobs()
         job = next((j for j in jobs if j["state"] == "cancelling"), None)
-        if self.loginRequired and not job: return
+        if (self.localMode or self.loginRequired) and not job: return
         job = job or next((j for j in jobs if j["state"] == "queued" and j.get("retry_at", 0) <= time.time()), None)
         if job:
             self.start_operation(job["card"], "discard" if job["state"] == "cancelling" else "install")
@@ -2050,7 +2240,7 @@ class LauncherBridge(QObject):
         self._install_preview = dict(busy=False, can_install=False, game_id=identity, directory=directory,
                                     kind=card.get("kind", "game") if card else "game",
                                     status=tr("Choose an available installation folder."))
-        if (not self._closing and card and self.cache is not None
+        if (not self.localMode and not self.loginRequired and not self._closing and card and self.cache is not None
                 and path_key(directory) in {path_key(p) for p in self.installDirectories}):
             self._preview_card = dict(card)
             self._preview_cache = self.cache
@@ -2194,6 +2384,7 @@ class LauncherBridge(QObject):
 
     @Slot(str, str, result=bool)
     def queueDownload(self, identity, directory):
+        if self.localMode or self.loginRequired: return False
         try:
             card = next((g for g in self._games + self._installer_games if g["id"] == identity), None)
             if self._closing or self.process or not card or self.cache is None or identity in self.installedIds:
@@ -2230,10 +2421,16 @@ class LauncherBridge(QObject):
         return True
 
     def start_operation(self, card, mode):
+        if self.localMode and mode == 'install':
+            self._operation_status = tr('Connect a NAS server to download games. Local games work without it.')
+            self.operationChanged.emit()
+            return
         if self.loginRequired and mode not in ('discard', 'organize'):
             self._operation_status = tr("Sign in to NGS in Settings.")
             self.operationChanged.emit()
             return
+        if self.artwork_worker is not None and mode in ('launch', 'installer_launch', 'metadata_resolve', 'metadata_apply', 'metadata_custom', 'remove', 'forget', 'organize', 'import', 'store_import', 'scan_many'):
+            self.artwork_worker.cancel.set()
         event('operation.start', mode=mode, game_id=card['id'], name=card['name'],
               folder=card.get('path', card.get('folder')), executable=card.get('exe', card.get('executable')))
         self._operation_game, self._operation_name = card["id"], card["name"]
@@ -2248,7 +2445,7 @@ class LauncherBridge(QObject):
         self._operation_status = {"launch": tr("Checking executable…"), "installer_launch": tr("Checking installer…"), "install": tr("Fetching HTTP package details…"),
                                   "organize": tr("Organizing local game copies…"), "remove": tr("Removing local game copy…"), "forget": tr("Removing library entry…"),
                                   "browse": tr("Reading folders…"), "scan": tr("Searching for executables…"), "import": tr("Checking selected executable…"),
-                                  "metadata_search": tr("Searching for game artwork…"), "metadata_resolve": tr("Loading game artwork…"),
+                                  "metadata_search": tr("Searching for game artwork…"), "metadata_resolve": tr("Loading game artwork…"), 'metadata_apply': tr('Saving artwork…'), 'metadata_custom': tr('Saving artwork…'),
                                   "discard": tr("Removing partial game copy…"), "scan_many": tr("Searching for games in the library folder…"),
                                   "store_scan": tr("Searching installed store games…"), "store_import": tr("Adding discovered games…")}[mode]
         if mode == "import":
@@ -2334,16 +2531,22 @@ class LauncherBridge(QObject):
             self.scannerChanged.emit()
             if self._scanner.get("last_added"):
                 self.gameAdded.emit(0, self._scanner["last_added"])
-        elif mode in ("metadata_search", "metadata_resolve"):
+        elif mode in ("metadata_search", "metadata_resolve", 'metadata_apply', 'metadata_custom'):
             if mode == "metadata_search":
                 self._metadata = dict(self._metadata, results=result, status=tr("Confirm the correct game.") if result else tr("Nothing found. Try a more specific title."))
+            elif mode == 'metadata_resolve' and self.game_worker.card.get('preview_only'):
+                self._metadata_preview = dict(result['card'])
+                self._metadata = dict(self._metadata, preview=self.local_card(dict(card=result['card'])), applying=False,
+                                      status=tr('Review the cover and description, then confirm your choice.'))
             else:
-                self._metadata = dict(self._metadata, status=result["message"])
+                self._metadata_preview = None
+                self._metadata = dict(self._metadata, status=result["message"], preview={}, applying=False, custom_saving=False)
                 if self.game_worker.card.get("local_id"):
                     self._installed = self.library.reconcile(self.librarySort)
                     self.libraryChanged.emit()
                 else:
-                    self._scanner = dict(self._scanner, matches=[result["card"]], name=result["card"]["name"], status=result["message"])
+                    self._scanner = dict(self._scanner, matches=[result["card"]], name=result["card"]["name"], status=result["message"],
+                                         manual_metadata_id=result['card']['id'])
                     self.scannerChanged.emit()
                 self.metadataApplied.emit()
             self._operation_status = self._metadata["status"]
@@ -2417,7 +2620,7 @@ class LauncherBridge(QObject):
                     self.localGameAdded.emit(result["card"]["id"])
             if mode in ("import", "install"):
                 self.gameAdded.emit(3 if result["card"].get("kind") == "installer" else 0, result["card"]["id"])
-        if mode in ("organize", "store_import", "scan_many", "metadata_resolve", "import", "install", "remove", "forget"):
+        if mode in ("organize", "store_import", "scan_many", "metadata_resolve", 'metadata_apply', 'metadata_custom', "import", "install", "remove", "forget"):
             self.schedule_backup()
         self.operationChanged.emit()
         self.downloadsChanged.emit()
@@ -2491,7 +2694,9 @@ class LauncherBridge(QObject):
         self._io_active = False
         self.sample_download_io()
         if self.game_worker and self.game_worker.mode.startswith("metadata_"):
-            self._metadata = dict(self._metadata, status=tr("Could not retrieve artwork. Refine the search or add the game without it. ") + message)
+            prefix = tr('Could not save artwork. ') if self.game_worker.mode in ('metadata_apply', 'metadata_custom') else tr("Could not retrieve artwork. Refine the search or add the game without it. ")
+            self._metadata = dict(self._metadata, applying=False, custom_saving=False, status=prefix + message,
+                                  custom_status=prefix + message if self.game_worker.mode == 'metadata_custom' else self._metadata.get('custom_status', ''))
             self.metadataChanged.emit()
         if self.game_worker and self.game_worker.mode in ("browse", "scan", "import", "scan_many", 'store_scan', 'store_import'):
             self._scanner = dict(self._scanner, status=message)
@@ -2527,6 +2732,7 @@ class LauncherBridge(QObject):
         else:
             self.pumpCleanup()
             QTimer.singleShot(0, self.pumpDownloads)
+            self.ensure_local_artwork()
 
     @Slot()
     def cancelOperation(self):
@@ -2647,7 +2853,7 @@ class LauncherBridge(QObject):
 
     @Slot()
     def retryOffline(self):
-        if self._closing or self._sleeping: return
+        if self._closing or self._sleeping or self.localMode: return
         now = time.monotonic()
         if now >= self._catalog_refresh_at:
             self.refreshCatalog()
@@ -2658,7 +2864,7 @@ class LauncherBridge(QObject):
 
     @Slot()
     def refreshInstallers(self):
-        if self.loginRequired: return
+        if self.localMode or self.loginRequired: return
         if self._closing or self.installer_cache is None or self.installer_worker is not None:
             return
         self._installer_status = tr("Refreshing installer catalog…")
@@ -2699,7 +2905,7 @@ class LauncherBridge(QObject):
 
     @Slot()
     def refreshCatalog(self):
-        if self.loginRequired: return
+        if self.localMode or self.loginRequired: return
         self.refreshInstallers()
         if self._closing or self.cache is None or self.worker is not None:
             return
@@ -2748,7 +2954,7 @@ class LauncherBridge(QObject):
             self.refreshCatalog()
 
     def schedule_backup(self):
-        if (not self._demo and not self._closing and not self._restoring_backup
+        if (not self.localMode and not self._demo and not self._closing and not self._restoring_backup
                 and self.settings.get("auto_backup", True) is not False):
             self.backup_timer.start(8000)
 
@@ -2761,13 +2967,19 @@ class LauncherBridge(QObject):
         self.gamesChanged.emit()
 
     def ensure_local_artwork(self):
-        if self._demo or not self.cache or self.artwork_worker is not None or self.loginRequired:
+        if (self._demo or (not self.localMode and (not self.cache or self.loginRequired))
+                or self.artwork_worker is not None or self.game_worker is not None or self.process is not None
+                or self._closing or self._sleeping or self.settings.get('resolve_local_metadata', True) is not True):
             return
+        from ngs.catalog import ArtworkCache
+        cache = ArtworkCache(self.storage) if self.localMode else self.cache
         receipts = [r for r in self._installed if isinstance(r, dict) and isinstance(r.get("card"), dict)]
         if not receipts:
             return
         needs_work = False
         for r in receipts:
+            if r.get('metadata_manual') and str(r.get('catalog_id', '')).startswith('custom-'):
+                continue
             card = r["card"]
             cover, bg = card.get("cover"), card.get("background")
             if not isinstance(cover, dict) or not isinstance(bg, dict):
@@ -2777,16 +2989,17 @@ class LauncherBridge(QObject):
                 continue
             if (str(cover.get("path", "")).startswith("/assets/ngs_launcher/pending/")
                     or str(bg.get("path", "")).startswith("/assets/ngs_launcher/pending/")
-                    or not self.cache.image_valid(cover)
-                    or not self.cache.image_valid(bg)):
+                    or not card.get('description')
+                    or not cache.image_valid(cover, verify_digest=False)
+                    or not cache.image_valid(bg, verify_digest=False)):
                 needs_work = True
                 break
         if not needs_work:
             return
         worker = LocalArtworkWorker(
             self.storage,
-            self.settings.get("tactic_url", ""),
-            self.cache,
+            "" if self.localMode else self.settings.get("tactic_url", ""),
+            cache,
             self.library,
             receipts,
             self._games,
@@ -2798,6 +3011,8 @@ class LauncherBridge(QObject):
             if self.artwork_worker is worker:
                 self.artwork_worker = None
             worker.deleteLater()
+            if worker.cancel.is_set() and not self._closing:
+                QTimer.singleShot(0, self.ensure_local_artwork)
         worker.finished.connect(cleanup)
         worker.start()
 
@@ -2884,6 +3099,7 @@ class LauncherBridge(QObject):
         section_override = {"library": 0, "catalog": 1, "installers": 3}.get(default_sec)
         section = section_override if section_override is not None else ui.get("section", 1)
         section = section if isinstance(section, int) and 0 <= section <= 3 else 1
+        if self.localMode: section = 0
         return dict(self.sectionUi(section), section=section)
 
     @Slot(int, result="QVariantMap")
@@ -3020,6 +3236,7 @@ class LauncherBridge(QObject):
             if getattr(self, 'status_overlay', None): self.status_overlay.close()
             if QGuiApplication.instance(): QGuiApplication.instance().quit()
         if event.type() == QEvent.Type.KeyPress:
+            self.set_input_device('keyboard')
             if event.key() == Qt.Key.Key_F and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
                 self.action.emit("search")
                 return True
@@ -3040,6 +3257,9 @@ class LauncherBridge(QObject):
             if action and not (event.modifiers() & (Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.ControlModifier)):
                 self.action.emit(action)
                 return True
+        if (event.type() == QEvent.Type.MouseButtonPress
+                and event.source() == Qt.MouseEventSource.MouseEventNotSynthesized):
+            self.set_input_device('keyboard')
         return super().eventFilter(watched, event)
 
 
@@ -3740,10 +3960,17 @@ def portable_check(storage, window):
     popups = {}
     # Check header input before popup exit transitions can intercept it.
     bridge = window.property("bridge")
-    login_gate_checked = bridge._demo or (bridge.loginRequired and
+    login_gate_checked = bridge._demo or (bridge.localMode and not bridge.loginRequired and window.property('section') == 0) or (bridge.loginRequired and
         window.findChild(QObject, 'loginSettingsButton').property('visible'))
     # The standalone self-test uses synthetic games and never supplies a real account.
     bridge._demo = True
+    bridge.settings['local_mode'] = False
+    if bridge.cache is None:
+        bridge.cache = CatalogCache(storage, bridge.settings['tactic_url'])
+        bridge.installer_cache = CatalogCache(storage, bridge.settings['tactic_url'], installers=True)
+        bridge._games = bridge.cache.load()
+        bridge.gamesChanged.emit()
+    bridge.settingsChanged.emit()
     bridge.runningChanged.emit()
     QGuiApplication.processEvents()
     original_input = bridge._input_device
@@ -3781,7 +4008,10 @@ def portable_check(storage, window):
     window.setProperty("navigationIndex", 6)
     QGuiApplication.processEvents()
     header_help = window.findChild(QObject, "selectionHelp")
-    header_help_checked = (header_help.property("visible") and tr("Game filters") in header_help.property("text")
+    help_visible = (header_help.property('visible') if bridge.inputHints['device'] == 'gamepad'
+                    else window.findChild(QObject, 'acceptHint').property('visible')
+                    and 'F10' in window.findChild(QObject, 'detailsHint').property('text'))
+    header_help_checked = (help_visible and tr("Game filters") in header_help.property("text")
                            and bridge.inputHints["activate"] + " — " in header_help.property("text"))
     window.setProperty("focusZone", 2)
     bridge.action.emit("next_control")

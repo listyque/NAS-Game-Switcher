@@ -26,10 +26,13 @@ class EdgeSettingsUiTests(unittest.TestCase):
             self.assertIn('полноэкранное',warning.property('text'))
             for index,key,control in ((41,'edge_auto_hide',auto),(40,'edge_swipe_enabled',edge)):
                 pane.setProperty('selectedField',index);bridge.action.emit('activate');QTest.qWait(40)
+                self.assertFalse(control.property('checked'))
+                QMetaObject.invokeMethod(pane,'save')
                 self.assertFalse(keyboard.options[key] or control.property('checked'))
             self.assertTrue(keyboard.options['overlay_enabled'])
             self.assertFalse(auto.property('enabled'))
             pane.setProperty('selectedField',20);bridge.action.emit('activate');QTest.qWait(40)
+            QMetaObject.invokeMethod(pane,'save')
             self.assertFalse(master.property('checked') or edge.property('enabled'))
             self.assertTrue(keyboard.enabled)
             QMetaObject.invokeMethod(pane,'close');QTest.qWait(200)
@@ -49,7 +52,8 @@ class EdgeSettingsUiTests(unittest.TestCase):
                 self.assertLessEqual(position.y()+warning.height(),body.height()+1)
             self.window.resize(1280,800);QTest.qWait(200)
             QMetaObject.invokeMethod(pane,'revealSelected');QTest.qWait(100)
-            self.assertTrue(self.window.grabWindow().save(str(self.repo/'reports/edge-options-20261025/settings.png')))
+            output=self.repo/'reports/edge-options-20261025/settings.png';output.parent.mkdir(parents=True,exist_ok=True)
+            self.assertTrue(self.window.grabWindow().save(str(output)))
             self.assertFalse(any('ReferenceError' in m or 'TypeError' in m or 'Binding loop' in m for m in self.messages),self.messages)
         finally:
             QMetaObject.invokeMethod(pane,'close')

@@ -5,7 +5,7 @@
   <h1>NAS Game Switcher</h1>
   <p><b>Your NAS library. Your Windows handheld. One place to play.</b></p>
   <p>Browse, download and launch your own PC games with a controller or touchscreen.</p>
-  <p><a href="https://github.com/listyque/NAS-Game-Switcher/releases">Download for Windows</a> · <a href="server/README.md">Docker & Synology setup</a> · <a href="https://github.com/listyque/NAS-Game-Switcher/issues">Report a bug</a></p>
+  <p><a href="https://github.com/listyque/NAS-Game-Switcher/releases">Download for Windows</a> · <a href="server/README.md">Docker & Synology setup</a> · <a href="docs/guide.md">User guide</a> · <a href="https://github.com/listyque/NAS-Game-Switcher/issues">Report a bug</a></p>
   <p><b>Preview · Work in progress</b></p>
 </div>
 
@@ -13,12 +13,16 @@
 
 NGS turns a self-hosted game collection into a library designed for Windows handhelds. Keep games on the NAS, download what you want to play locally, and move between your game and NGS controls. The server is yours; NGS does not include games or provide a hosted account service.
 
+**No NAS? Start locally.** A fresh installation opens My games without registration or a server. Add your game folders or scan installed store games; covers, backgrounds and descriptions are fetched directly from game providers and cached on your device. The library, launch settings and play history live in SQLite. Connect a NAS later if you want downloads, profile sync and server backups.
+
 ## What you can do
 
 - **Browse comfortably:** controller, touch and mouse navigation; grid and detail views; real metadata, artwork, filters, sorting and favorites.
 - **Keep storage predictable:** queued downloads reserve space, resumable transfers verify their contents, and local folders can use readable game names.
 - **Play locally:** launch downloaded games and supported local/store entries; return to the session screen to see playtime or stop the game.
-- **Use handheld controls:** optional NGS Input provides a compact swipe handle, quick volume/brightness controls, virtual keyboard and touchpads over supported games. Configure or disable the top menu in Settings.
+- **Type without a physical keyboard:** the built-in keyboard has eight views, custom layouts, themes, macros, controller-to-key assignments and touchpads.
+- **Manage your NAS collection:** separate catalog managers guide you through publishing ready-to-play games and complete installation packages, with artwork matching and batch actions.
+- **Use handheld controls:** a compact swipe handle opens volume, brightness and other quick settings. Optional NGS Input lets the keyboard and controls appear above supported Windows system windows. Configure or disable the top menu in Settings.
 - **Keep your own profile:** register on your NAS, sign in on another device, sync play history and back up settings. Reset a game's local statistics on the current device.
 - **Make it yours:** English by default, Russian available in Settings, accent colors, themes, scaling and Production Mode to reduce diagnostic logging.
 - **Host it yourself:** Docker or a Synology SPK, read-only game sources, separate player/owner access and optional Internet HTTPS without VPN.
@@ -31,15 +35,31 @@ NGS turns a self-hosted game collection into a library designed for Windows hand
 
 </details>
 
+## A keyboard built for handhelds
+
+Choose a normal, compact, split, traditional, gamepad, full, navigation or NumPad view. Adjust height and opacity, select a theme, create your own layouts and macros, or use the two touchpads for cursor control. Auto-show responds to a finger tap on an editable field. Controller presets and individual key assignments cover games that expect a keyboard.
+
+![NGS built-in keyboard](media/guide/keyboard-en.png)
+
+The keyboard is included in NGS. The optional **NGS Input** Windows component extends where the controls can appear, including above Start and supported system windows. [Keyboard, touchpads and controller guide](docs/guide.md#built-in-keyboard).
+
+## Turn NAS folders into a game library
+
+Two built-in catalog managers cover different collections: **ready-to-play games** for local download and launch, and **installer packages** for normal setup on the device. Select a folder and executable, match the game artwork, review and publish. Batch actions process clear matches and leave uncertain ones for review. Publishing requires server-owner access; NAS source folders remain read-only.
+
+![Ready-to-play catalog manager](media/guide/catalog-games-en.png)
+
+The [illustrated user guide](docs/guide.md) covers both catalog managers, every main-menu item, all six settings sections, keyboard options and quick controls. [Русская версия руководства](docs/guide.ru.md). Screenshots use real cached game artwork; sample catalog rows and system values illustrate the UI.
+
 ## Get started
 
 ### Windows handheld or PC
 
 1. Download **NGS-Setup-*.exe** from [Releases](https://github.com/listyque/NAS-Game-Switcher/releases).
 2. Install and launch NGS. Choose the optional **NGS Input** component if you want controls over games; Windows asks for permission to install it.
-3. Open **Settings → Account** and enter your NGS server address.
-4. For local HTTP, enter the pairing code from the NAS app log once. With trusted HTTPS this step is automatic.
-5. Register your profile or sign in. Add games as the server owner, then download and play.
+3. **Local library:** open **My games** and add a game folder or scan installed store games. No account or server is required.
+4. **Optional NAS:** open **Settings → Users and account → Connect a NAS server**, enter its address, then register or sign in.
+5. For NAS access over local HTTP, enter the pairing code from the NAS app log once. With trusted HTTPS this step is automatic. After sign-in, Catalog and Installers become available.
 
 **Requirements:** Windows 11 x64. Python is bundled. A portable ZIP is also available; extract the entire folder and run `NGS.exe`. Keep its `data` folder when moving or updating it.
 

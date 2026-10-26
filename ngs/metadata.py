@@ -19,12 +19,15 @@ def metadata_reference(value):
     raise ValueError("Invalid game reference")
 
 
-def metadata_fetch(url, limit, missing_ok=False, timeout=12):
+def metadata_fetch(url, limit, missing_ok=False, timeout=12, cancel=None):
     import sys, time, types, threading
     from collections import OrderedDict
     import urllib.error
     import urllib.request
     from urllib.parse import urlsplit
+    context = metadata_fetch.__dict__.get('context')
+    cancel = cancel if cancel is not None else getattr(context, 'cancel', None)
+    if cancel is not None and cancel.is_set(): raise InterruptedError('Metadata request cancelled')
     parsed = urlsplit(url)
     if (parsed.scheme != "https" or parsed.username or parsed.password or parsed.port not in (None, 443)
             or parsed.fragment or parsed.hostname not in ("store.steampowered.com", "shared.akamai.steamstatic.com",
@@ -54,6 +57,7 @@ def metadata_fetch(url, limit, missing_ok=False, timeout=12):
             raise ValueError("Metadata redirects are disabled")
     request = urllib.request.Request(url, headers={"User-Agent": "NGS-Catalogizer/1.0", "Accept": "application/json,image/*"})
     for attempt in range(2):
+        if cancel is not None and cancel.is_set(): raise InterruptedError('Metadata request cancelled')
         try:
             with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
                 data = response.read(limit + 1)
@@ -81,13 +85,16 @@ def metadata_fetch(url, limit, missing_ok=False, timeout=12):
 def metadata_artwork(sources):
     import base64, hashlib
     from concurrent.futures import ThreadPoolExecutor
+    context = metadata_fetch.__dict__.get('context')
+    cancel = getattr(context, 'cancel', None)
     sources = {context: tuple(dict.fromkeys(url for url in urls if url)) for context, urls in sources.items()}
     if any(not urls for urls in sources.values()):
         raise RuntimeError("The provider returned no game images.")
     def download(urls):
         for index, url in enumerate(urls):
             try:
-                data = metadata_fetch(url, 8 * 1024 * 1024, timeout=4 if index + 1 < len(urls) else 12)
+                options = dict(cancel=cancel) if cancel is not None else {}
+                data = metadata_fetch(url, 8 * 1024 * 1024, timeout=4 if index + 1 < len(urls) else 12, **options)
                 return {"base64": base64.b64encode(data).decode("ascii"), "sha256": hashlib.sha256(data).hexdigest()}
             except (RuntimeError, OSError):
                 continue
@@ -121,7 +128,9 @@ def steam_metadata(operation, value):
     if operation not in ("search", "details") or not re.fullmatch(r"[1-9][0-9]{0,9}", str(value)):
         raise ValueError("Invalid Steam app ID")
     app_id = str(value)
-    query = urlencode({"appids": app_id, "l": "english" if operation == "search" else "russian", "cc": "US"})
+    context = metadata_fetch.__dict__.get('context')
+    language = getattr(context, 'language', 'russian')
+    query = urlencode({"appids": app_id, "l": "english" if operation == "search" else language, "cc": "US"})
     result = json.loads(fetch("https://store.steampowered.com/api/appdetails?" + query, 4 * 1024 * 1024)).get(app_id, {})
     game = result.get("data", {})
     if not result.get("success") or game.get("type") != "game":
@@ -145,7 +154,7 @@ def steam_metadata(operation, value):
 def search_title(value):
     import re
     value = re.sub(r"(?i)^\s*(?:\[(?:dixen18|xatab|fitgirl|dodi|elamigos|dl|p|l|gog|steam|repack|portable)\]\s*)+", "", value)
-    value = re.sub(r"(?i)(?:\s*\[(?:p|l|dl|rus|eng|multi\d*|repack|portable|gog|steam)[^\]]*\])+\s*$", "", value)
+    value = re.sub(r"(?i)(?:\s*\[(?:p|l|dl|rus|eng|multi\d*|repack|portable|gog|steam)\b[^\]]*\])+\s*$", "", value)
     value = re.sub(r"(?i)(?:\s*\((?:rus|eng|multi\d*|repack|portable|gog|steam|\d{4,6})[^)]*\))+\s*$", "", value)
     value = value.replace("_", " ")
     value = re.sub(r"(?<=[a-z])(?=[A-Z][a-z]|RTX\b)", " ", value)
@@ -360,6 +369,9 @@ def game_metadata(operation, value):
     link = re.fullmatch(r"https://store\.epicgames\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?p/([a-z0-9-]+)/?", value.strip())
     if link:
         return epic_metadata("search", "epic:" + link.group(1))
+    link = re.fullmatch(r"https://(?:www\.)?gog\.com/(?:[a-z]{2}/)?game/([a-z0-9_]+)/?", value.strip())
+    if link:
+        return gog_metadata("search", link.group(1).replace('_', ' '))
     if value.startswith("gog:"):
         return gog_metadata("search", value)
     link = re.fullmatch(r"https://lutris\.net/games/([a-z0-9](?:[a-z0-9-]{0,70}[a-z0-9])?)/?", value.strip())
@@ -442,13 +454,93 @@ def resolve_remote(client, operation, value):
     return result["info"]
 
 
+def custom_metadata(storage, name, description, cover, background, seed, cancel):
+    import hashlib, uuid
+    from ngs.catalog import ArtworkCache, validate_card
+    from ngs.catalogizer_ui import custom_artwork
+    from ngs.install import check_cancel
+    from ngs.i18n import tr
+    check_cancel(cancel)
+    if not name.strip() or len(name) > 160 or len(description) > 3000:
+        raise ValueError(tr('Enter a title up to 160 characters and a description up to 3,000 characters.'))
+    card = dict(id=seed['id'] if seed.get('id', '').startswith('custom-') else 'custom-' + uuid.uuid4().hex,
+                name=name.strip(), description=description, subtitle='', genre=seed.get('genre', ''),
+                accent=seed.get('accent', '#419964'), source_folder='', executable='', metadata_url='',
+                available_on_nas=False, revision=1)
+    cache, images = ArtworkCache(storage), {}
+    for kind, source in (('cover', cover), ('background', background)):
+        check_cancel(cancel)
+        if source:
+            data = custom_artwork(source, kind)
+            digest = hashlib.sha256(data).hexdigest()
+            card[kind] = dict(path='/assets/ngs_launcher/local/' + digest + '.image', size=len(data), sha256=digest)
+            images[kind] = data
+        elif seed.get(kind) and cache.image_valid(seed[kind]):
+            card[kind] = seed[kind]
+        elif kind == 'background':
+            card[kind] = card['cover']
+        else:
+            raise ValueError(tr('Choose a cover on this device.'))
+    card = validate_card(card)
+    for kind, data in images.items():
+        check_cancel(cancel)
+        cache.cache_image(card[kind], data)
+    check_cancel(cancel)
+    return card
+
+
+def provider_metadata(storage, operation, value, cancel, progress=None):
+    import base64, hashlib, threading
+    from ngs.catalog import ArtworkCache, MAX_IMAGE, validate_card
+    from ngs.install import check_cancel
+    from ngs.i18n import tr
+    check_cancel(cancel)
+    if operation not in ('search', 'resolve'):
+        raise ValueError('Invalid metadata operation')
+    if progress: progress('metadata_provider', 0, 1, tr('Searching game providers…') if operation == 'search' else tr('Loading description and artwork…'))
+    context = metadata_fetch.__dict__.setdefault('context', threading.local())
+    previous = getattr(context, 'cancel', None)
+    previous_language = getattr(context, 'language', 'russian')
+    context.cancel = cancel
+    context.language = 'russian' if storage.read_settings().get('language') == 'ru' else 'english'
+    try:
+        result = game_metadata('details' if operation == 'resolve' else 'search', value)
+    finally:
+        context.cancel = previous
+        context.language = previous_language
+    check_cancel(cancel)
+    if operation == 'search': return result
+    card = dict(result['card'], revision=1)
+    images = {}
+    for kind in ('cover', 'background'):
+        image = result[kind]
+        encoded = image.get('base64', '')
+        if not isinstance(encoded, str) or len(encoded) > 4 * ((MAX_IMAGE + 2) // 3):
+            raise ValueError('Artwork exceeds its size limit')
+        data = base64.b64decode(encoded, validate=True)
+        digest = hashlib.sha256(data).hexdigest()
+        if image.get('sha256') != digest:
+            raise ValueError('Artwork checksum mismatch')
+        card[kind] = dict(path='/assets/ngs_launcher/local/' + digest + '.image', size=len(data), sha256=digest)
+        images[kind] = data
+    card = validate_card(card)
+    cache = ArtworkCache(storage)
+    for kind, data in images.items():
+        check_cancel(cancel)
+        cache.cache_image(card[kind], data)
+    check_cancel(cancel)
+    return dict(card=card, provider_id=result['provider_id'])
+
+
 def client_metadata(storage, base_url, operation, value, cancel, progress=None, *, offline=False):
     import re, hashlib, json, time
     from ngs.api import MetadataApi
     from ngs.catalog import CatalogCache, validate_card
     from ngs.install import check_cancel, safe_path
     from ngs.catalog import atomic_write
+    from ngs.i18n import tr
     check_cancel(cancel)
+    local = not base_url
     def validate(result):
         if operation == "resolve":
             return dict(result, card=validate_card(result["card"]))
@@ -459,7 +551,8 @@ def client_metadata(storage, base_url, operation, value, cancel, progress=None, 
         for row in result:
             metadata_reference(row["app_id"])
         return result
-    key = hashlib.sha256(json.dumps([base_url.rstrip("/"), operation, value, METADATA_REVISION]).encode("utf8")).hexdigest()
+    source = ('providers:ru' if storage.read_settings().get('language') == 'ru' else 'providers:en') if local else base_url.rstrip('/')
+    key = hashlib.sha256(json.dumps([source, operation, value, METADATA_REVISION]).encode("utf8")).hexdigest()
     cached = safe_path(storage.cache, "local-metadata-" + key + ".json")
     result, stale = None, None
     try:
@@ -470,37 +563,46 @@ def client_metadata(storage, base_url, operation, value, cancel, progress=None, 
                 result = stale
     except (ValueError, OSError, KeyError, TypeError):
         pass
+    if local and operation == 'resolve' and result is not None and not offline:
+        from ngs.catalog import ArtworkCache
+        cache = ArtworkCache(storage)
+        if any(not cache.image_valid(result['card'][key]) for key in ('cover', 'background')):
+            result = None
     if result is None:
         if offline:
             if stale is None:
-                raise ConnectionError("No cached artwork for this search yet. Add the game without it; search becomes available when connected to the server.")
+                raise ConnectionError(tr("No cached artwork yet. Connect to the Internet to download it.") if local else "No cached artwork for this search yet. Add the game without it; search becomes available when connected to the server.")
             result = stale
     if result is None:
-        if progress:
+        if progress and not local:
             progress("metadata_server", 0, 0, "The server is searching for the game…" if operation == "search"
                      else "The server is fetching description and artwork from the provider…")
         try:
-            result = validate(MetadataApi(storage, base_url).call(operation, value))
+            result = validate(provider_metadata(storage, operation, value, cancel, progress) if local
+                              else MetadataApi(storage, base_url).call(operation, value))
         except Exception as error:
+            check_cancel(cancel)
             from ngs.http_retry import transient_network_error
-            if not transient_network_error(error): raise
+            if not transient_network_error(error) and not (local and isinstance(error, RuntimeError)): raise
             if stale is None:
-                raise ConnectionError("The artwork server is offline. Add the game without artwork and search again when connected.") from None
+                raise ConnectionError(tr("Game providers are unavailable. Your local games remain playable; try artwork search again when connected.") if local else "The artwork server is offline. Add the game without artwork and search again when connected.") from None
             result, offline = stale, True
         if result and not offline:
             atomic_write(cached, json.dumps(dict(saved=time.time(), result=result), ensure_ascii=False).encode("utf8"))
     check_cancel(cancel)
     if operation == "resolve":
         card = validate_card(result["card"])
-        if progress:
+        if progress and not local:
             progress("metadata_artwork", 0, 2, "Description received. Loading images from NAS…")
-        if not offline:
+        if not offline and not local:
             try:
                 CatalogCache(storage, base_url).cache_artwork(card, cancel, progress=progress)
             except Exception as error:
                 from ngs.http_retry import transient_network_error
                 if not transient_network_error(error): raise
                 offline = True
+        if local:
+            return dict(result, card=card, message=tr("Cached artwork · offline.") if offline else tr("Description and images saved on this device."))
         return dict(result, card=card, message="Cached artwork · server offline." if offline
                     else "Description and images cached on your server.")
     return result

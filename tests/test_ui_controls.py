@@ -19,10 +19,14 @@ class ControlUiTests(unittest.TestCase):
             toggle=pane.findChild(QObject,'settingsKeyboardEnabled')
             point=toggle.mapToScene(QPointF(toggle.width()/2,toggle.height()/2)).toPoint()
             QTest.mouseClick(self.window,Qt.MouseButton.LeftButton,pos=point);QTest.qWait(120)
+            self.assertTrue(keyboard.enabled)
+            self.assertTrue(self.expression(pane,'save()'))
             self.assertFalse(keyboard.enabled or toggle.property('checked'))
             self.assertTrue(keyboard.options['overlay_enabled'])
             keyboard.show();self.assertFalse(keyboard.visible)
             pane.setProperty('selectedField',20);self.bridge.action.emit('activate');QTest.qWait(120)
+            self.assertTrue(keyboard.options['overlay_enabled'])
+            self.assertTrue(self.expression(pane,'save()'))
             overlay_toggle=pane.findChild(QObject,'settingsOverlayEnabled')
             self.assertFalse(keyboard.options['overlay_enabled'] or overlay_toggle.property('checked'))
             self.bridge.status_overlay.show('screen');self.assertFalse(self.bridge.status_overlay.visible)
@@ -31,11 +35,13 @@ class ControlUiTests(unittest.TestCase):
             saved=self.bridge.storage.read_settings()['keyboard_options']
             self.assertIs(saved['enabled'],False);self.assertIs(saved['overlay_enabled'],False)
             pane.setProperty('selectedField',19);self.bridge.action.emit('activate')
+            self.assertTrue(self.expression(pane,'save()'))
             self.assertTrue(keyboard.enabled and toggle.property('checked'))
             self.assertFalse(keyboard.options['overlay_enabled'])
             pane.setProperty('selectedField',20);self.bridge.action.emit('activate')
+            self.assertTrue(self.expression(pane,'save()'))
             self.assertTrue(keyboard.options['overlay_enabled'] and overlay_toggle.property('checked'))
-            self.assertIn(self.bridge.inputHints['activate'],toggle.property('text'))
+            self.assertTrue(toggle.property('checked'))
         finally:
             keyboard.setEnabled(original_enabled);keyboard.setOverlayEnabled(original_overlay);pane.close()
 
@@ -87,6 +93,8 @@ class ControlUiTests(unittest.TestCase):
                 self.assertTrue(row.isVisible())
             QMetaObject.invokeMethod(delegates[-1], 'clicked'); QTest.qWait(200)
             self.assertEqual(choice.property('currentIndex'), count - 1)
+        self.assertTrue(pane.property('dirty'))
+        self.assertTrue(self.expression(pane, 'save()'))
         self.assertEqual(self.bridge.settings['theme'], 'light')
         self.assertEqual(self.bridge.settings['accent_color'], 'rose')
 

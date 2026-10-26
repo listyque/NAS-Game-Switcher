@@ -12,6 +12,7 @@ class PlayerUiTests(unittest.TestCase):
     def test_profile_spinner_stops_when_closed_during_background_sync(self):
         account = self.engine.bridge.players
         pane = self.window.findChild(QObject, 'playerAccountPane')
+        QMetaObject.invokeMethod(pane, 'close'); QTest.qWait(220)
         spinner = pane.findChild(QObject, 'playerSyncActivity')
         loader = spinner.findChild(QObject, 'activityLoader')
         previous = account.worker
@@ -48,7 +49,7 @@ class PlayerUiTests(unittest.TestCase):
             if value['action'] == 'logout': return {}
             return dict(acked=[], totals=[], more=False)
         try:
-            with patch.object(bridge, 'refreshCatalog'), patch.object(bridge, 'pumpDownloads'), patch('ngs.players.PlayerTransport.call', remote):
+            with patch.object(bridge, 'refreshCatalog'), patch.object(bridge, 'pumpDownloads'), patch('ngs.players.PlayerTransport.call', remote), patch('ngs.players.connect_server', return_value=self.storage.config/'fixture-pin'):
                 bridge._demo = False; account.account = {}; account.save(); account.changed.emit()
                 self.assertTrue(bridge.loginRequired)
                 bridge.start_operation(dict(id='test', name='Test'), 'launch')
@@ -133,14 +134,14 @@ class PlayerUiTests(unittest.TestCase):
             return dict(acked=[r['id'] for r in value.get('rows',[])],totals=[],more=False)
         self_test = self
         try:
-            with patch('ngs.players.PlayerTransport.call', remote):
+            with patch('ngs.players.PlayerTransport.call', remote), patch('ngs.players.connect_server', return_value=self.storage.config/'fixture-pin'):
                 QMetaObject.invokeMethod(pane,'open'); QTest.qWait(250)
                 self.assertTrue(window.property('modalVisible'))
                 pane.findChild(QObject,'playerUsername').setProperty('text','player')
                 pane.findChild(QObject,'playerPassword').setProperty('text','test-password-long')
-                bridge.action.emit('down'); self.assertEqual(pane.property('selected'),1)
-                bridge.action.emit('down'); self.assertEqual(pane.property('selected'),2)
-                bridge.action.emit('down'); self.assertEqual(pane.property('selected'),3)
+                submit_index = 4 if pane.findChild(QObject,'playerPairingCode').property('visible') else 3
+                for index in range(1, submit_index + 1):
+                    bridge.action.emit('down'); self.assertEqual(pane.property('selected'),index)
                 bridge.action.emit('activate')
                 self.assertEqual(pane.findChild(QObject,'playerPassword').property('text'),'')
                 self.wait_account()

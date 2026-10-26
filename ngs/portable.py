@@ -125,6 +125,7 @@ class PortableStorage:
             "tactic_url": DEFAULT_TACTIC_URL,
             "tactic_project": "ngs_launcher",
             "language": "en",
+            "local_mode": True,
             "update_url": "https://api.github.com/repos/listyque/NAS-Game-Switcher/releases",
             "games_source": r"\\NAS\Games",
             "games_directory": "games",

@@ -768,7 +768,7 @@ class LocalLibrary:
             event('library.add_external', game_id=identity, name=name, folder=str(folder), executable=executable)
             return receipt
 
-    def update_external_metadata(self, identity, card):
+    def update_external_metadata(self, identity, card, *, manual=False, rename=False):
         from ngs.scanner import validate_external
         card = validate_card(card)
         identity = game_id(identity)
@@ -777,13 +777,16 @@ class LocalLibrary:
             receipt = validate_external(json.loads(record.read_bytes()))
             if receipt["card"]["id"] != identity:
                 raise ValueError("Invalid external identity")
+            if receipt.get('metadata_manual') and not manual and receipt.get('catalog_id') != card['id']:
+                return receipt
             name = receipt["card"]["name"]
-            if ((not receipt.get("catalog_id") and name != self.install_path(receipt).name)
+            if not rename and ((not receipt.get("catalog_id") and name != self.install_path(receipt).name)
                     or (receipt.get("metadata_name") and name != receipt["metadata_name"])):
                 card = dict(card, name=name)  # Keep an explicitly named local game.
             else:
                 receipt["metadata_name"] = card["name"]
             receipt["catalog_id"] = card["id"]
+            if manual: receipt['metadata_manual'] = True
             receipt["card"] = dict(card, id=identity)
             validate_external(receipt)
             atomic_write(record, json.dumps(receipt, ensure_ascii=False).encode("utf8"))

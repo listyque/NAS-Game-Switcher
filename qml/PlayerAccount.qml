@@ -31,8 +31,8 @@ ToolPage {
         return revs[idx]
     }
     readonly property var controls: state.logged_in
-        ? [syncButton, historyButton, deviceBranchButton, backupRevisionButton, restoreAllButton, restoreSettingsButton, restoreLibraryButton, backupNowButton, deviceNameField, logoutButton, backButton]
-        : [serverField].concat(pairingField.visible ? [pairingField] : []).concat([nameField, passwordField, submitButton, registerButton, backButton])
+        ? [syncButton, historyButton, deviceBranchButton, backupRevisionButton, restoreAllButton, restoreSettingsButton, restoreLibraryButton, backupNowButton, deviceNameField, logoutButton, localButton, backButton]
+        : [serverField].concat(pairingField.visible ? [pairingField] : []).concat([nameField, passwordField, submitButton, registerButton, localButton, backButton])
     pageScale: uiScale
     onAboutToShow: {
         serverField.text = root.bridge.settingsState.tactic_url
@@ -303,6 +303,8 @@ ToolPage {
                 }
 
                 AccountButton { id: logoutButton; visible: root.state.logged_in; enabled: !root.state.busy && !root.state.backup_busy; glyph: "@power"; text: qsTranslate("NGS", "Sign out"); onClicked: root.account.logout() }
+                Caption { visible: root.bridge.localMode; text: qsTranslate("NGS", "Local library is active. Connect and sign in only if you want NAS downloads, shared statistics and server backups.") }
+                AccountButton { id: localButton; objectName: "playerUseLocalLibrary"; visible: !root.bridge.localMode; enabled: !root.state.busy && !root.state.backup_busy; glyph: "@library"; text: qsTranslate("NGS", "Use without a server"); onClicked: if (root.bridge.useLocalLibrary()) root.close() }
                 ActivityIndicator { objectName: "playerSyncActivity"; running: root.visible && (root.state.busy || root.state.backup_busy); visible: running; width: 32 * root.uiScale; height: width }
                 Caption { objectName: "playerSyncStatus"; text: root.state.status + (root.state.logged_in ? qsTranslate("NGS", "\nWaiting to upload: ") + root.state.pending + qsTranslate("NGS", " sessions") : ""); color: root.state.busy ? uiTheme.themeColors.accent : uiTheme.themeColors.muted }
                 Caption { visible: !root.state.logged_in; text: qsTranslate("NGS", "Your password is not saved. The sign-in token is stored in the data folder; do not share that folder.") }

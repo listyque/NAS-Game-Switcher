@@ -78,6 +78,13 @@ def select_runtime(built, repo, qt, dumpbin):
     scan = json.loads(subprocess.check_output([str(qt / "qmlimportscanner.exe"), "-rootPath", str(repo / "qml"),
                                               "-importPath", str(qt / "qml")], text=True))
     modules = {Path(item["relativePath"]) for item in scan if item.get("type") == 'module' and item.get("path")}
+    explicit_styles = set()
+    for source in (repo / 'qml').rglob('*.qml'):
+        explicit_styles.update(re.findall(r'^\s*import\s+QtQuick\.Controls\.(\w+)', source.read_text(encoding='utf8'), re.M))
+    if explicit_styles == {'Basic'}:
+        # qmlimportscanner includes optional styles from QtQuick.Controls/qmldir.
+        styles = {'Fusion', 'Imagine', 'Material', 'Universal', 'FluentWinUI3', 'Windows'}
+        modules = {p for p in modules if not (p.parts[:2] == ('QtQuick', 'Controls') and len(p.parts) > 2 and p.parts[2] in styles)}
     if not {Path("QtQuick"), Path("QtQuick/Controls/Basic")}.issubset(modules):
         raise RuntimeError("The QML dependency scanner did not find the launcher imports")
     qml_root = built / "PySide6/qml"

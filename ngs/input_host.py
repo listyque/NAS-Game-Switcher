@@ -543,7 +543,12 @@ def run_host(storage, pipe, parent_pid, launcher_settings=None):
             if 'production_mode' in settings and type(settings['production_mode']) is not bool: raise ValueError(tr("Invalid logging mode."))
             from ngs.diagnostics import set_production
             set_production(settings.get('production_mode') is True)
+            language_changed = settings.get('language', 'en') != bridge.settings.get('language', 'en')
             bridge.settings, bridge._sleeping = settings, message['sleeping']
+            if language_changed:
+                from ngs.i18n import configure
+                configure(storage, settings.get('language', 'en'))
+                engine.retranslate()
             bridge.pad_allowed = message['pad_allowed']
             from ngs.gamepad import GAMEPAD_MASK
             shortcuts = message.get('service_buttons')

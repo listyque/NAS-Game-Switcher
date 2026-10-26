@@ -78,10 +78,17 @@ def main():
         "Extract the whole folder to a writable location and run NGS.exe. Python is included.\n"
         "Keep the data folder: it contains your settings, library, queue and cache.\n"
         "Settings: F2 or the menu. Toggle NGS: F9. Language: Settings → Display.\n"
-        "Enter your NAS server address in Settings → Account, then register or sign in.\n"
+        "My games works without a NAS or account. Add game folders or scan installed store games.\n"
+        "Covers, backgrounds and descriptions load directly from public game providers and stay cached offline.\n"
+        "NAS is optional: Settings → Users and account → Connect a NAS server, then register or sign in.\n"
         "For local HTTP, copy its pairing code from the NAS administration logs. Use trusted HTTPS over the Internet.\n"
-        "Games download from your NAS; SMB is not required on the client. Updates come from the official GitHub repository.\n"
-        "NGS Input is optional and requires Windows permission to install.\n",
+        "NAS downloads do not require SMB on the client. Updates come from the official GitHub repository.\n"
+        "NGS Input is optional and requires Windows permission to install.\n\n"
+        "Русский\n"
+        "«Мои игры» работают без NAS и аккаунта. Добавьте папку игры или найдите установленные игры из магазинов.\n"
+        "Обложки, фоны и описания загружаются напрямую из игровых источников и сохраняются для работы без сети.\n"
+        "NAS подключается по желанию: Настройки → Пользователи и аккаунт → Подключить NAS.\n"
+        "При переносе и обновлении сохраняйте папку data целиком.\n",
         encoding="utf-8-sig")
     from tools.windows_bundle import copy_licenses
     copy_licenses(repo,runtime)

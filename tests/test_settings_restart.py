@@ -115,6 +115,9 @@ class SettingsRestartTests(unittest.TestCase):
                     b.set_input_device('gamepad')
                     pane.setProperty('selectedField', 38); QTest.qWait(350)
                     b.action.emit('activate')
+                self.restart.assert_not_called()
+                self.assertEqual(self.storage.read_settings()['production_mode'], b._boot_production)
+                QMetaObject.invokeMethod(pane, 'save')
                 self.assertEqual(self.storage.read_settings()['production_mode'], not b._boot_production)
                 self.wait_restart()
         finally:

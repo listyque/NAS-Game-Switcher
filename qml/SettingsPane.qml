@@ -20,6 +20,12 @@ MotionPopup {
     property int editingField: -1
     property string childPage: ""
     property int inputInstallAction: 0
+    property string savedValues: ""
+    property bool applying: false
+    property bool saveFailed: false
+    property string pendingAction: ""
+    property int unsavedAction: 2
+    readonly property bool dirty: savedValues !== "" && JSON.stringify(values()) !== savedValues
     readonly property color ink: uiTheme.themeColors.text
     readonly property color muted: uiTheme.themeColors.muted
     readonly property var sections: [qsTranslate("NGS", "Users and account"), qsTranslate("NGS", "Display and appearance"), qsTranslate("NGS", "Storage and installation"), qsTranslate("NGS", "Controllers and input"), qsTranslate("NGS", "System"), qsTranslate("NGS", "Catalog and publishing")]
@@ -100,7 +106,7 @@ MotionPopup {
         autoTrimMemoryToggle.checked = Boolean(state.auto_trim_game_memory)
         productionToggle.checked = Boolean(state.production_mode)
     }
-    onAboutToShow: {
+    function loadState() {
         const state = bridge.settingsState
         destination.text = state.games_directories.join("\n")
         server.text = state.tactic_url
@@ -113,6 +119,12 @@ MotionPopup {
         edgeSwipeToggle.checked = bridge.keyboard.options.edge_swipe_enabled
         edgeAutoHideToggle.checked = bridge.keyboard.options.edge_auto_hide
         syncStateControls(state)
+        savedValues = JSON.stringify(values())
+        saveFailed = false
+    }
+    onAboutToShow: {
+        bridge.refreshAutostart()
+        loadState()
         childPage = ""
         selectedField = -1; page = -1; menuIndex = updateAvailable ? 4 : 0; focusSide = 0; choiceField = -1
         body.contentY = 0
@@ -120,10 +132,9 @@ MotionPopup {
         navigationProgress = 0; displayedPage = -1; detailReveal = 1
         Qt.callLater(() => {
             menuList.positionViewAtIndex(menuIndex, ListView.Contain)
-            bridge.refreshAutostart()
         })
     }
-    onAboutToHide: { inputInstallDialog.close(); navigationMotion.stop(); detailEntrance.stop(); endEditing(); password.text = "" }
+    onAboutToHide: { unsavedDialog.close(); inputInstallDialog.close(); navigationMotion.stop(); detailEntrance.stop(); endEditing(); password.text = "" }
     onSelectedFieldChanged: {
         if (selectedField < 0) return
         for (let i = 0; i < sectionFields.length; ++i) {
@@ -137,23 +148,13 @@ MotionPopup {
     Connections {
         target: root.bridge
         function onSettingsChanged() {
-            if (!root.visible) return
-            const state = root.bridge.settingsState
-            root.syncStateControls(state)
-            if (!destination.activeFocus) destination.text = state.games_directories.join("\n")
-            if (!knownGamesUrlField.activeFocus) knownGamesUrlField.text = state.known_games_url || ""
-            scaleControl.value = Math.round(state.ui_scale * 100)
-            metadata.checked = state.resolve_local_metadata
-            autostart.checked = state.autostart
+            if (root.visible && !root.dirty && !root.applying) root.loadState()
         }
     }
     Connections {
         target: root.bridge.keyboard
         function onChanged() {
-            keyboardToggle.checked = root.bridge.keyboard.enabled
-            overlayToggle.checked = root.bridge.keyboard.options.overlay_enabled
-            edgeSwipeToggle.checked = root.bridge.keyboard.options.edge_swipe_enabled
-            edgeAutoHideToggle.checked = root.bridge.keyboard.options.edge_auto_hide
+            if (root.visible && !root.dirty && !root.applying) root.loadState()
         }
     }
     Connections {
@@ -167,9 +168,12 @@ MotionPopup {
         destination.focus = false; server.focus = false; username.focus = false; password.focus = false; knownGamesUrlField.focus = false
         editingField = -1; bridge.keyboard.hide()
     }
-    function save() {
-        endEditing()
-        return bridge.applySettings({
+    function values() {
+        return {
+            language: languageControl.currentIndex === 1 ? "ru" : "en",
+            autostart: autostart.checked,
+            keyboard_options: {enabled: keyboardToggle.checked, overlay_enabled: overlayToggle.checked,
+                edge_swipe_enabled: edgeSwipeToggle.checked, edge_auto_hide: edgeAutoHideToggle.checked},
             games_directories: destination.text.split("\n").filter(v => v.trim().length > 0),
             tactic_url: server.text,
             resolve_local_metadata: metadata.checked,
@@ -194,37 +198,33 @@ MotionPopup {
             auto_trim_game_memory: autoTrimMemoryToggle.checked,
             production_mode: productionToggle.checked,
             known_games_url: knownGamesUrlField.text
-        })
+        }
     }
-    function applyAppearance() {
-        bridge.setAppearance(themeControl.currentIndex === 1 ? "light" : "dark", accentKeys[Math.max(0, accentControl.currentIndex)])
+    function save() {
+        endEditing()
+        applying = true
+        const saved = bridge.applySettings(values())
+        applying = false
+        saveFailed = !saved
+        if (saved) loadState()
+        return saved
     }
-    function applyGraphics() {
-        bridge.setGraphicsOptions(graphicsKeys[Math.max(0, graphicsControl.currentIndex)], disableOverlaysToggle.checked)
+    function requestLeave(action) {
+        endEditing()
+        if (!dirty) { if (action === "close") close(); else openChild(action); return }
+        pendingAction = action; unsavedAction = 2; unsavedDialog.open()
     }
-    function applyQuick() {
-        bridge.setQuickOptions({
-            animation_speed: animationKeys[Math.max(0, animationSpeedControl.currentIndex)],
-            backdrop_blur: backdropBlurToggle.checked,
-            default_section: defaultSectionKeys[Math.max(0, defaultSectionControl.currentIndex)],
-            window_mode: windowModeKeys[Math.max(0, windowModeControl.currentIndex)],
-            auto_backup: autoBackupToggle.checked,
-            auto_start_downloads: autoStartDownloadsToggle.checked,
-            free_space_reserve_gb: reserveValues[Math.max(0, reserveSpaceControl.currentIndex)],
-            gamepad_vibration: vibrationToggle.checked,
-            gamepad_deadzone: deadzoneValues[Math.max(0, deadzoneControl.currentIndex)],
-            gamepad_repeat_speed: repeatKeys[Math.max(0, repeatSpeedControl.currentIndex)],
-            auto_check_updates: autoCheckUpdatesToggle.checked,
-            minimize_to_tray: minimizeToTrayToggle.checked,
-            freeze_on_sleep: freezeOnSleepToggle.checked,
-            auto_trim_game_memory: autoTrimMemoryToggle.checked,
-            production_mode: productionToggle.checked
-        })
+    function finishLeave(apply) {
+        if (apply) { if (!save()) return }
+        else loadState()
+        const action = pendingAction
+        pendingAction = ""; unsavedDialog.close()
+        if (action === "close") close()
+        else openChild(action)
     }
-    function setStartup(enabled) { bridge.setAutostart(enabled); autostart.checked = bridge.settingsState.autostart }
     function openChild(kind) {
         endEditing()
-        if (kind === "account" && !save()) return
+        if (dirty) { requestLeave(kind); return }
         childPage = kind
         if (kind === "account") accountRequested()
         else if (kind === "bindings") bindingsRequested()
@@ -238,7 +238,7 @@ MotionPopup {
     }
     function availableFields() {
         if (page < 0) return []
-        return sectionFields[page].filter(i => fields[i].visible && fields[i].enabled).concat([6, 7])
+        return sectionFields[page].concat([6, 7]).filter(i => fields[i].visible && fields[i].enabled)
     }
     function enterSection(index) {
         endEditing(); menuIndex = index; page = index; body.contentY = 0
@@ -257,7 +257,7 @@ MotionPopup {
     }
     function goBack() {
         if (page >= 0) { endEditing(); focusSide = 0; page = -1; selectedField = -1; menuList.positionViewAtIndex(menuIndex, ListView.Contain); return }
-        close()
+        requestLeave("close")
     }
     function activateField() {
         if (selectedField < 0 || !fields[selectedField].enabled) return
@@ -265,7 +265,7 @@ MotionPopup {
             editingField = selectedField; fields[selectedField].forceActiveFocus(); bridge.keyboard.show()
         } else if (selectedField === 1) folderDialog.openFolder(destination.text.split("\n")[0])
         else if (selectedField === 3) metadata.checked = !metadata.checked
-        else if (selectedField === 5) setStartup(!autostart.checked)
+        else if (selectedField === 5) autostart.checked = !autostart.checked
         else if (selectedField === 6) save()
         else if (selectedField === 7) goBack()
         else if (selectedField === 8) openChild("updates")
@@ -276,12 +276,7 @@ MotionPopup {
         else if (selectedField === 14) explainInputInstall()
         else if (selectedField === 18) openChild("installerCatalogizer")
         else if (selectedField === 39) bridge.organizeLibrary()
-        else if (selectedField === 19) bridge.keyboard.setEnabled(!bridge.keyboard.enabled)
-        else if (selectedField === 20) bridge.keyboard.setOverlayEnabled(!bridge.keyboard.options.overlay_enabled)
-        else if (selectedField === 40) bridge.keyboard.setEdgeSwipeEnabled(!bridge.keyboard.options.edge_swipe_enabled)
-        else if (selectedField === 41) bridge.keyboard.setEdgeAutoHide(!bridge.keyboard.options.edge_auto_hide)
-        else if (selectedField === 22) { disableOverlaysToggle.checked = !disableOverlaysToggle.checked; applyGraphics() }
-        else if ([23, 25, 28, 30, 33, 34, 35, 36, 38].indexOf(selectedField) >= 0) { fields[selectedField].checked = !fields[selectedField].checked; applyQuick() }
+        else if ([19, 20, 22, 23, 25, 28, 30, 33, 34, 35, 36, 38, 40, 41].indexOf(selectedField) >= 0) fields[selectedField].checked = !fields[selectedField].checked
     }
     function explainInputInstall() {
         endEditing()
@@ -293,6 +288,15 @@ MotionPopup {
         bridge.installInputHost()
     }
     function handleAction(action) {
+        if (unsavedDialog.visible) {
+            if (action === "back" || action === "menu") unsavedDialog.close()
+            else if (action === "up" || action === "down") unsavedAction = (unsavedAction + (action === "down" ? 1 : 2)) % 3
+            else if (action === "activate") {
+                if (unsavedAction === 2) unsavedDialog.close()
+                else finishLeave(unsavedAction === 0)
+            }
+            return
+        }
         if (inputInstallDialog.visible) {
             if (action === "back" || action === "menu") inputInstallDialog.close()
             else if (action === "up" || action === "down") inputInstallAction = 1 - inputInstallAction
@@ -310,18 +314,24 @@ MotionPopup {
             else if (action === "up" || action === "down") choiceCursor = (choiceCursor + (action === "down" ? 1 : field.count - 1)) % field.count
             else if (action === "activate") {
                 field.currentIndex = choiceCursor
-                if (choiceField === 42) bridge.setLanguage(choiceCursor === 1 ? 'ru' : 'en')
-                else if (choiceField === 21) applyGraphics()
-                else if (choiceField === 11 || choiceField === 12) applyAppearance()
-                else applyQuick()
                 field.popup.close()
             }
             return
         }
-        if (action === "menu") { close(); return }
+        if (action === "menu") { requestLeave("close"); return }
         if (action === "back") { goBack(); return }
+        if (page < 0 && (selectedField === 6 || selectedField === 7)) {
+            if (action === "activate") activateField()
+            else if (action === "down") selectedField = 7
+            else if (action === "up") {
+                if (selectedField === 7 && dirty) selectedField = 6
+                else { selectedField = -1; focusSide = 0; menuIndex = sections.length - 1 }
+            }
+            return
+        }
         if (page < 0 || focusSide === 0) {
             if (action === "up" || action === "down") {
+                if (page < 0 && action === "down" && menuIndex === sections.length - 1) { selectedField = dirty ? 6 : 7; return }
                 menuIndex = Math.max(0, Math.min(sections.length - 1, menuIndex + (action === "down" ? 1 : -1)))
                 if (page >= 0) { page = menuIndex; body.contentY = 0 }
                 menuList.positionViewAtIndex(menuIndex, ListView.Contain)
@@ -365,7 +375,7 @@ MotionPopup {
         leftPadding: (glyph ? 54 : 16) * root.uiScale
         rightPadding: (rowButton.highlighted && root.hints.device === "gamepad" && fieldIndex !== 6 && fieldIndex !== 7 ? 56 : 16) * root.uiScale + (fieldIndex === 8 && root.updateAvailable ? 32 : 0)
         background: FocusBox { selected: rowButton.highlighted }
-        contentItem: Text { text: rowButton.text; color: rowButton.enabled ? root.ink : root.muted; font.pixelSize: 21 * root.uiScale; font.weight: Font.Light; verticalAlignment: Text.AlignVCenter; wrapMode: rowButton.glyph ? Text.WordWrap : Text.NoWrap; elide: Text.ElideRight }
+        contentItem: Text { text: rowButton.text; color: rowButton.enabled ? root.ink : root.muted; font.pixelSize: 21 * root.uiScale; font.weight: Font.Light; verticalAlignment: Text.AlignVCenter; wrapMode: Text.WordWrap }
         Item { visible: !!rowButton.glyph; width: 24 * root.uiScale; height: width; x: 16 * root.uiScale; anchors.verticalCenter: parent.verticalCenter
             KeyboardGlyph { keyName: rowButton.glyph; ink: root.ink; width: parent.width; height: width }
         }
@@ -430,11 +440,11 @@ MotionPopup {
         id: choice
         property int fieldIndex
         property string label
-        width: parent.width; height: 70 * root.uiScale; focusPolicy: Qt.NoFocus
+        width: parent.width; height: Math.max(70 * root.uiScale, Math.max(choiceLabel.implicitHeight, choiceValue.implicitHeight) + 24 * root.uiScale); focusPolicy: Qt.NoFocus
         background: FocusBox { selected: root.focusSide === 1 && root.selectedField === choice.fieldIndex }
         contentItem: Item {
-            Text { anchors.left: parent.left; anchors.leftMargin: 16 * root.uiScale; anchors.verticalCenter: parent.verticalCenter; width: parent.width * .5; text: choice.label; color: root.ink; font.pixelSize: 21 * root.uiScale; font.weight: Font.Light }
-            Text { anchors.right: parent.right; anchors.rightMargin: 36 * root.uiScale; anchors.verticalCenter: parent.verticalCenter; width: parent.width * .45; text: choice.displayText; color: root.muted; font.pixelSize: 18 * root.uiScale; horizontalAlignment: Text.AlignRight; elide: Text.ElideRight }
+            Text { id: choiceLabel; x: 16 * root.uiScale; anchors.verticalCenter: parent.verticalCenter; width: Math.max(0, (parent.width - 68 * root.uiScale) * .52); text: choice.label; color: root.ink; font.pixelSize: 21 * root.uiScale; font.weight: Font.Light; wrapMode: Text.WordWrap }
+            Text { id: choiceValue; anchors.right: parent.right; anchors.rightMargin: 36 * root.uiScale; anchors.verticalCenter: parent.verticalCenter; width: Math.max(0, (parent.width - 68 * root.uiScale) * .48); text: choice.displayText; color: root.muted; font.pixelSize: 18 * root.uiScale; horizontalAlignment: Text.AlignRight; wrapMode: Text.WordWrap }
         }
         indicator: Text { x: parent.width - width - 16 * root.uiScale; y: (parent.height - height) / 2; text: "›"; color: root.ink; font.pixelSize: 26 * root.uiScale }
         delegate: ItemDelegate {
@@ -446,10 +456,6 @@ MotionPopup {
             contentItem: Text { text: modelData; color: root.ink; font.pixelSize: 20 * root.uiScale; verticalAlignment: Text.AlignVCenter }
             onClicked: {
                 choice.currentIndex = index
-                if (choice.fieldIndex === 42) root.bridge.setLanguage(index === 1 ? 'ru' : 'en')
-                else if (choice.fieldIndex === 21) root.applyGraphics()
-                else if (choice.fieldIndex === 11 || choice.fieldIndex === 12) root.applyAppearance()
-                else root.applyQuick()
                 choice.popup.close()
             }
         }
@@ -506,7 +512,7 @@ MotionPopup {
                 readonly property bool currentSection: root.page === index
                 Accessible.description: currentSection ? qsTranslate("NGS", "Open section") : ""
                 Accessible.name: modelData + (index === 4 && root.updateAvailable ? qsTranslate("NGS", " · NGS update available") : "")
-                x: 6; width: menuList.width - 12; height: Math.max(64, 78 * root.uiScale)
+                x: 6; width: menuList.width - 12; height: Math.max(64, 78 * root.uiScale, categoryLabel.implicitHeight + 24 * root.uiScale)
                 highlighted: root.focusSide === 0 && root.menuIndex === index
                 padding: 12 * root.uiScale; focusPolicy: Qt.NoFocus
                 background: FocusBox {
@@ -541,7 +547,7 @@ MotionPopup {
                             c.stroke()
                         }
                     }
-                    Text { width: parent.width - 44 * root.uiScale - (category.index === 4 && root.updateAvailable ? 32 : 0) - (category.highlighted && root.hints.device === "gamepad" ? 40 * root.uiScale : 0); height: parent.height; text: category.modelData; color: root.page === category.index || root.page < 0 || category.highlighted ? root.ink : root.muted; font.pixelSize: 22 * root.uiScale; font.weight: Font.Light; verticalAlignment: Text.AlignVCenter; wrapMode: Text.WordWrap }
+                    Text { id: categoryLabel; width: Math.max(0, parent.width - 44 * root.uiScale - (category.index === 4 && root.updateAvailable ? 32 : 0) - (category.highlighted && root.hints.device === "gamepad" ? 40 * root.uiScale : 0)); height: parent.height; text: category.modelData; color: root.page === category.index || root.page < 0 || category.highlighted ? root.ink : root.muted; font.pixelSize: 22 * root.uiScale; font.weight: Font.Light; verticalAlignment: Text.AlignVCenter; wrapMode: Text.WordWrap }
                 }
                 FluidSurface {
                     visible: opacity > 0.01
@@ -578,23 +584,24 @@ MotionPopup {
                 Column {
                     visible: root.displayedPage === 0; width: parent.width; spacing: 16 * root.uiScale
                     Caption { text: qsTranslate("NGS", "Server address") }
-                    SettingsField { id: server; objectName: "settingsServer"; fieldIndex: 2; maximumLength: 512; onAccepted: root.save() }
+                    SettingsField { id: server; objectName: "settingsServer"; fieldIndex: 2; maximumLength: 512; onAccepted: root.endEditing() }
                     // Field indices 15–17 stay reserved; sign-in lives in the account subpage.
                     SettingsField { id: username; objectName: "settingsUsername"; fieldIndex: 15; visible: false; enabled: false }
                     SettingsField { id: password; objectName: "settingsPassword"; fieldIndex: 16; visible: false; enabled: false; echoMode: TextInput.Password }
                     SettingsButton { id: loginButton; objectName: "settingsLogin"; fieldIndex: 17; visible: false; enabled: false }
-                    SettingsButton { id: accountButton; objectName: "openPlayerAccount"; fieldIndex: 13; text: root.bridge.playerAccount.state.logged_in ? qsTranslate("NGS", "Profile and backups · ") + root.bridge.playerAccount.state.username + "  ›" : qsTranslate("NGS", "Sign in to NGS  ›"); onClicked: root.openChild("account") }
-                    SettingsToggle { id: autoBackupToggle; objectName: "settingsAutoBackup"; fieldIndex: 23; text: qsTranslate("NGS", "Automatically back up library and settings"); onClicked: root.applyQuick() }
+                    Caption { visible: root.bridge.localMode; text: qsTranslate("NGS", "Local library · games and statistics are saved on this device. A NAS server is optional.") }
+                    SettingsButton { id: accountButton; objectName: "openPlayerAccount"; fieldIndex: 13; text: root.bridge.localMode ? qsTranslate("NGS", "Connect a NAS server  ›") : root.bridge.playerAccount.state.logged_in ? qsTranslate("NGS", "Profile and backups · ") + root.bridge.playerAccount.state.username + "  ›" : qsTranslate("NGS", "Sign in to NGS  ›"); onClicked: root.openChild("account") }
+                    SettingsToggle { id: autoBackupToggle; objectName: "settingsAutoBackup"; fieldIndex: 23; enabled: !root.bridge.localMode; text: qsTranslate("NGS", "Automatically back up library and settings") }
                     Caption { text: root.bridge.playerAccount.state.status + (root.bridge.playerAccount.state.logged_in && root.bridge.playerAccount.state.backup_status ? "\n" + root.bridge.playerAccount.state.backup_status : "") }
                 }
                 Column {
                     visible: root.displayedPage === 1; width: parent.width; spacing: 4 * root.uiScale
                     Choice { id: languageControl; objectName: "settingsLanguage"; fieldIndex: 42; label: qsTranslate("NGS", "Language"); model: ["English", "Русский"] }
-                    Caption { text: qsTranslate("NGS", "NGS restarts to apply the language. The running game will not be interrupted.") }
+                    Caption { text: qsTranslate("NGS", "The interface language changes after Apply, without restarting NGS or the game.") }
                     Choice { id: themeControl; objectName: "settingsTheme"; fieldIndex: 11; label: qsTranslate("NGS", "Theme"); model: [qsTranslate("NGS", "Dark"), qsTranslate("NGS", "Light")] }
                     Choice { id: accentControl; objectName: "settingsAccent"; fieldIndex: 12; label: qsTranslate("NGS", "Accent color"); model: root.accentLabels }
                     Choice { id: graphicsControl; objectName: "settingsGraphicsApi"; fieldIndex: 21; label: qsTranslate("NGS", "Graphics API"); model: root.graphicsLabels }
-                    SettingsToggle { id: disableOverlaysToggle; objectName: "settingsDisableOverlays"; fieldIndex: 22; text: qsTranslate("NGS", "Hide third-party overlays and FPS counters"); onClicked: root.applyGraphics() }
+                    SettingsToggle { id: disableOverlaysToggle; objectName: "settingsDisableOverlays"; fieldIndex: 22; text: qsTranslate("NGS", "Hide third-party overlays and FPS counters") }
                     Caption { text: qsTranslate("NGS", "Blocks third-party hooks in the NGS window (RTSS, Afterburner, Adrenalin and Vulkan layers) while preserving game overlays. NGS restarts automatically after changes, or after the current game closes.") }
                     Slider {
                         id: scaleControl; objectName: "settingsUiScale"; width: parent.width; height: 108 * root.uiScale
@@ -609,7 +616,7 @@ MotionPopup {
                         onPressedChanged: if (pressed) root.selectedField = 4
                     }
                     Choice { id: animationSpeedControl; objectName: "settingsAnimationSpeed"; fieldIndex: 24; label: qsTranslate("NGS", "Animation speed"); model: root.animationLabels }
-                    SettingsToggle { id: backdropBlurToggle; objectName: "settingsBackdropBlur"; fieldIndex: 25; text: qsTranslate("NGS", "Blur backgrounds behind windows and menus"); onClicked: root.applyQuick() }
+                    SettingsToggle { id: backdropBlurToggle; objectName: "settingsBackdropBlur"; fieldIndex: 25; text: qsTranslate("NGS", "Blur backgrounds behind windows and menus") }
                     Choice { id: defaultSectionControl; objectName: "settingsDefaultSection"; fieldIndex: 26; label: qsTranslate("NGS", "Startup section"); model: root.defaultSectionLabels }
                     Choice { id: windowModeControl; objectName: "settingsWindowMode"; fieldIndex: 27; label: qsTranslate("NGS", "Window mode"); model: root.windowModeLabels }
                     Caption { objectName: "settingsRefreshRate"; text: qsTranslate("NGS", "Display refresh rate: ") + Math.round(root.bridge.displayRefreshRate) + qsTranslate("NGS", " Hz") }
@@ -625,7 +632,7 @@ MotionPopup {
                         onActiveFocusChanged: if (activeFocus) { root.selectedField = 0; root.editingField = 0 }
                     }
                     SettingsButton { id: addDestination; fieldIndex: 1; text: qsTranslate("NGS", "Add folder  +"); onClicked: folderDialog.openFolder(destination.text.split("\n")[0]) }
-                    SettingsToggle { id: autoStartDownloadsToggle; objectName: "settingsAutoStartDownloads"; fieldIndex: 28; text: qsTranslate("NGS", "Automatically resume downloads at startup"); onClicked: root.applyQuick() }
+                    SettingsToggle { id: autoStartDownloadsToggle; objectName: "settingsAutoStartDownloads"; fieldIndex: 28; text: qsTranslate("NGS", "Automatically resume downloads at startup") }
                     Choice { id: reserveSpaceControl; objectName: "settingsReserveSpace"; fieldIndex: 29; label: qsTranslate("NGS", "Free space reserve"); model: root.reserveLabels }
                     Caption { text: qsTranslate("NGS", "The first folder is used by default. Installed games stay where they are.") }
                     SettingsButton { id: organizeButton; objectName: "organizeLibraryButton"; fieldIndex: 39; glyph: "@library"; text: qsTranslate("NGS", "Organize library"); enabled: !root.bridge.operationBusy && !root.bridge.runningState.running; onClicked: root.bridge.organizeLibrary() }
@@ -634,13 +641,13 @@ MotionPopup {
                 Column {
                     visible: root.displayedPage === 3; width: parent.width; spacing: 4 * root.uiScale
                     SettingsButton { id: bindingsButton; objectName: "openBindingsButton"; fieldIndex: 10; text: qsTranslate("NGS", "Buttons and gamepad  ›"); onClicked: root.openChild("bindings") }
-                    SettingsToggle { id: keyboardToggle; objectName: "settingsKeyboardEnabled"; fieldIndex: 19; glyph: "@keyboard"; text: qsTranslate("NGS", "NGS keyboard"); onClicked: root.bridge.keyboard.setEnabled(checked) }
+                    SettingsToggle { id: keyboardToggle; objectName: "settingsKeyboardEnabled"; fieldIndex: 19; glyph: "@keyboard"; text: qsTranslate("NGS", "NGS keyboard") }
                     Caption { text: qsTranslate("NGS", "Enables the NGS on-screen keyboard, tap-to-show and manual activation.") }
-                    SettingsToggle { id: overlayToggle; objectName: "settingsOverlayEnabled"; fieldIndex: 20; glyph: "@overlay"; text: qsTranslate("NGS", "NGS quick settings"); onClicked: root.bridge.keyboard.setOverlayEnabled(checked) }
+                    SettingsToggle { id: overlayToggle; objectName: "settingsOverlayEnabled"; fieldIndex: 20; glyph: "@overlay"; text: qsTranslate("NGS", "NGS quick settings") }
                     Caption { text: qsTranslate("NGS", "Audio, brightness and other quick settings. Turning this off closes the panel and disables all activation methods, including the edge handle.") }
-                    SettingsToggle { id: edgeSwipeToggle; objectName: "settingsEdgeSwipeEnabled"; fieldIndex: 40; glyph: "@overlay"; text: qsTranslate("NGS", "Quick settings edge handle"); enabled: overlayToggle.checked; onClicked: root.bridge.keyboard.setEdgeSwipeEnabled(checked) }
+                    SettingsToggle { id: edgeSwipeToggle; objectName: "settingsEdgeSwipeEnabled"; fieldIndex: 40; glyph: "@overlay"; text: qsTranslate("NGS", "Quick settings edge handle"); enabled: overlayToggle.checked }
                     Caption { id: edgeSwipeWarning; objectName: "settingsEdgeSwipeWarning"; text: qsTranslate("NGS", "While NGS is active in fullscreen, the edge handle disables Windows edge gestures, including Start. Turn off the handle to restore them. The Start button still works.") }
-                    SettingsToggle { id: edgeAutoHideToggle; objectName: "settingsEdgeAutoHide"; fieldIndex: 41; glyph: "@overlay"; text: qsTranslate("NGS", "Auto-hide the handle after 4 seconds"); enabled: overlayToggle.checked && edgeSwipeToggle.checked; onClicked: root.bridge.keyboard.setEdgeAutoHide(checked) }
+                    SettingsToggle { id: edgeAutoHideToggle; objectName: "settingsEdgeAutoHide"; fieldIndex: 41; glyph: "@overlay"; text: qsTranslate("NGS", "Auto-hide the handle after 4 seconds"); enabled: overlayToggle.checked && edgeSwipeToggle.checked }
                     Caption { text: qsTranslate("NGS", "The handle slides away when idle; swipe from the same top-edge area to reveal it. Turn off auto-hide to keep it visible.") }
                     SettingsButton {
                         id: inputHostButton; objectName: "installInputHostButton"; fieldIndex: 14
@@ -648,13 +655,13 @@ MotionPopup {
                         onClicked: root.explainInputInstall()
                     }
                     Caption { text: qsTranslate("NGS", "Allows the keyboard to appear above Start and Windows system windows. Configure layouts, size and opacity through the keyboard's settings button.") }
-                    SettingsToggle { id: vibrationToggle; objectName: "settingsGamepadVibration"; fieldIndex: 30; text: qsTranslate("NGS", "Gamepad vibration (haptic feedback)"); onClicked: root.applyQuick() }
+                    SettingsToggle { id: vibrationToggle; objectName: "settingsGamepadVibration"; fieldIndex: 30; text: qsTranslate("NGS", "Gamepad vibration (haptic feedback)") }
                     Choice { id: deadzoneControl; objectName: "settingsGamepadDeadzone"; fieldIndex: 31; label: qsTranslate("NGS", "Stick deadzone"); model: root.deadzoneLabels }
                     Choice { id: repeatSpeedControl; objectName: "settingsGamepadRepeat"; fieldIndex: 32; label: qsTranslate("NGS", "Navigation repeat speed"); model: root.repeatLabels }
                 }
                 Column {
                     visible: root.displayedPage === 4; width: parent.width; spacing: 4 * root.uiScale
-                    SettingsToggle { id: autostart; objectName: "settingsAutostart"; fieldIndex: 5; text: qsTranslate("NGS", "Start with Windows"); enabled: root.bridge.settingsState.autostart_supported; onClicked: root.setStartup(checked) }
+                    SettingsToggle { id: autostart; objectName: "settingsAutostart"; fieldIndex: 5; text: qsTranslate("NGS", "Start with Windows"); enabled: root.bridge.settingsState.autostart_supported }
                     SettingsButton {
                         id: updatesButton; objectName: "openUpdatesButton"; fieldIndex: 8
                         text: root.updateAvailable ? qsTranslate("NGS", "NGS updates · new version available") : qsTranslate("NGS", "NGS updates  ›")
@@ -664,21 +671,22 @@ MotionPopup {
                             anchors.right: parent.right; anchors.rightMargin: 16 * root.uiScale; anchors.verticalCenter: parent.verticalCenter
                         }
                     }
-                    SettingsToggle { id: autoCheckUpdatesToggle; objectName: "settingsAutoCheckUpdates"; fieldIndex: 33; text: qsTranslate("NGS", "Automatically check for updates"); onClicked: root.applyQuick() }
-                    SettingsToggle { id: minimizeToTrayToggle; objectName: "settingsMinimizeToTray"; fieldIndex: 34; text: qsTranslate("NGS", "Minimize NGS to the system tray"); onClicked: root.applyQuick() }
-                    SettingsToggle { id: freezeOnSleepToggle; objectName: "settingsFreezeOnSleep"; fieldIndex: 35; text: qsTranslate("NGS", "Freeze the running game before sleep"); onClicked: root.applyQuick() }
-                    SettingsToggle { id: autoTrimMemoryToggle; objectName: "settingsAutoTrimMemory"; fieldIndex: 36; text: qsTranslate("NGS", "Trim game memory when freezing"); onClicked: root.applyQuick() }
-                    SettingsToggle { id: productionToggle; objectName: "settingsProductionMode"; fieldIndex: 38; text: qsTranslate("NGS", "Production mode"); onClicked: root.applyQuick() }
+                    SettingsToggle { id: autoCheckUpdatesToggle; objectName: "settingsAutoCheckUpdates"; fieldIndex: 33; text: qsTranslate("NGS", "Automatically check for updates") }
+                    SettingsToggle { id: minimizeToTrayToggle; objectName: "settingsMinimizeToTray"; fieldIndex: 34; text: qsTranslate("NGS", "Minimize NGS to the system tray") }
+                    SettingsToggle { id: freezeOnSleepToggle; objectName: "settingsFreezeOnSleep"; fieldIndex: 35; text: qsTranslate("NGS", "Freeze the running game before sleep") }
+                    SettingsToggle { id: autoTrimMemoryToggle; objectName: "settingsAutoTrimMemory"; fieldIndex: 36; text: qsTranslate("NGS", "Trim game memory when freezing") }
+                    SettingsToggle { id: productionToggle; objectName: "settingsProductionMode"; fieldIndex: 38; text: qsTranslate("NGS", "Production mode") }
                     Caption { text: qsTranslate("NGS", "Disables diagnostic logs, tracing and diagnostic uploads. NGS restarts automatically, or after the current game closes.") }
-                    Caption { text: autostart.enabled ? qsTranslate("NGS", "Startup settings apply immediately for the current Windows user.") : qsTranslate("NGS", "Automatic startup is available in the Windows build of NGS.") }
+                    Caption { text: autostart.enabled ? qsTranslate("NGS", "Choose Apply to save startup settings for the current Windows user.") : qsTranslate("NGS", "Automatic startup is available in the Windows build of NGS.") }
                 }
                 Column {
                     visible: root.displayedPage === 5; width: parent.width; spacing: 4 * root.uiScale
                     SettingsToggle { id: metadata; fieldIndex: 3; text: qsTranslate("NGS", "Find artwork for local games") }
-                    SettingsButton { id: catalogizerButton; objectName: "openCatalogizerButton"; fieldIndex: 9; glyph: "@library"; text: qsTranslate("NGS", "Ready-to-play game catalog manager"); onClicked: root.openChild("catalogizer") }
-                    SettingsButton { id: installerCatalogizerButton; objectName: "openInstallerCatalogizerButton"; fieldIndex: 18; glyph: "@library"; text: qsTranslate("NGS", "Installer package catalog manager"); onClicked: root.openChild("installerCatalogizer") }
+                    SettingsButton { id: catalogizerButton; objectName: "openCatalogizerButton"; fieldIndex: 9; enabled: !root.bridge.localMode; glyph: "@library"; text: qsTranslate("NGS", "Ready-to-play game catalog manager"); onClicked: root.openChild("catalogizer") }
+                    SettingsButton { id: installerCatalogizerButton; objectName: "openInstallerCatalogizerButton"; fieldIndex: 18; enabled: !root.bridge.localMode; glyph: "@library"; text: qsTranslate("NGS", "Installer package catalog manager"); onClicked: root.openChild("installerCatalogizer") }
+                    Caption { visible: root.bridge.localMode; text: qsTranslate("NGS", "NAS catalogs become available after connecting a server. Add games from this device in My games.") }
                     Caption { text: qsTranslate("NGS", "Game matching database update URL (JSON, for example on GitHub)") }
-                    SettingsField { id: knownGamesUrlField; objectName: "settingsKnownGamesUrl"; fieldIndex: 37; maximumLength: 512; placeholderText: "https://raw.githubusercontent.com/.../known_games.json"; onAccepted: root.save() }
+                    SettingsField { id: knownGamesUrlField; objectName: "settingsKnownGamesUrl"; fieldIndex: 37; maximumLength: 512; placeholderText: "https://raw.githubusercontent.com/.../known_games.json"; onAccepted: root.endEditing() }
                     Caption { text: qsTranslate("NGS", "Add games and publish them to the server catalog.") }
                 }
             }
@@ -688,15 +696,32 @@ MotionPopup {
             width: parent.width * .90; height: 52 * root.uiScale
             SettingsButton { id: backButton; objectName: "settingsBack"; fieldIndex: 7; width: 180 * root.uiScale; height: parent.height; text: qsTranslate("NGS", "Back · ") + root.hints.back; onClicked: root.goBack() }
             Caption { visible: root.page < 0 && root.hints.device === "gamepad"; x: backButton.width + 24 * root.uiScale; anchors.verticalCenter: parent.verticalCenter; width: parent.width - x; text: root.hints.activate + qsTranslate("NGS", "   Select") }
-            SettingsButton { id: saveButton; objectName: "settingsSave"; fieldIndex: 6; anchors.right: parent.right; width: 190 * root.uiScale; height: parent.height; visible: root.displayedPage >= 0; enabled: root.page >= 0; opacity: root.navigationProgress; text: qsTranslate("NGS", "Apply"); onClicked: root.save() }
+            SettingsButton { id: saveButton; objectName: "settingsSave"; fieldIndex: 6; anchors.right: parent.right; width: 190 * root.uiScale; height: parent.height; visible: root.displayedPage >= 0 || root.dirty; enabled: root.dirty; text: qsTranslate("NGS", "Apply"); onClicked: root.save() }
         }
         Caption {
             objectName: "settingsMessage"; visible: root.displayedPage >= 0; opacity: root.navigationProgress * root.detailReveal
             x: body.x + 12 * root.uiScale; y: footer.y - height - 8 * root.uiScale; width: body.width - 24 * root.uiScale
-            text: root.bridge.operationBusy ? root.bridge.operationStatus : root.bridge.settingsStatus; font.pixelSize: 14 * root.uiScale; maximumLineCount: 2; elide: Text.ElideRight
+            text: root.bridge.operationBusy ? root.bridge.operationStatus : root.saveFailed ? root.bridge.settingsStatus : root.dirty ? qsTranslate("NGS", "Changes are not applied. Choose Apply to save them.") : root.bridge.settingsStatus; font.pixelSize: 14 * root.uiScale; maximumLineCount: 2; elide: Text.ElideRight
         }
     }
 
+    MotionPopup {
+        id: unsavedDialog; objectName: "settingsUnsavedDialog"
+        parent: root.parent; anchors.centerIn: parent
+        width: Math.min(parent.width - 32, 540 * root.uiScale)
+        height: unsavedContent.implicitHeight + padding * 2
+        padding: 24 * root.uiScale; modal: true; focus: true; closePolicy: Popup.NoAutoClose
+        Overlay.modal: Rectangle { color: uiTheme.themeColors.scrim }
+        background: FluidSurface { color: uiTheme.themeColors.glass; radius: 24 }
+        contentItem: Column {
+            id: unsavedContent; spacing: 14 * root.uiScale
+            Caption { text: qsTranslate("NGS", "Apply your changes before leaving?") }
+            Caption { visible: root.saveFailed; text: root.bridge.settingsStatus; font.pixelSize: 14 * root.uiScale }
+            FluidButton { objectName: "settingsUnsavedApply"; width: parent.width; text: qsTranslate("NGS", "Apply"); highlighted: root.unsavedAction === 0; onClicked: root.finishLeave(true) }
+            FluidButton { objectName: "settingsUnsavedDiscard"; width: parent.width; text: qsTranslate("NGS", "Discard changes"); highlighted: root.unsavedAction === 1; onClicked: root.finishLeave(false) }
+            FluidButton { objectName: "settingsUnsavedStay"; width: parent.width; text: qsTranslate("NGS", "Keep editing"); highlighted: root.unsavedAction === 2; onClicked: unsavedDialog.close() }
+        }
+    }
     MotionPopup {
         id: inputInstallDialog; objectName: "inputInstallDialog"
         parent: root.parent
