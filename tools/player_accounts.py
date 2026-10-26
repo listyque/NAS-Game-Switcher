@@ -217,7 +217,18 @@ def player_action(wire, address):
         if key is None: return {'status': 400}
         # Only deliberate validation messages are exposed; never echo payloads or crypto failures.
         message = str(error)
-        if not message or not any('\u0400' <= c <= '\u04ff' for c in message): message = "Profile request rejected."
+        if message not in {
+            "Username: 3–32 Latin letters, digits, periods, hyphens or underscores.",
+            "The password must contain 8 to 128 characters.",
+            "The server owner has disabled registration.",
+            "Too many registrations. Try again later.",
+            "Could not create the profile. Choose another name or sign in.",
+            "Registration requires a password of 12–128 characters.",
+            "The server profile limit has been reached. Contact its owner.",
+            "Too many sign-in attempts. Wait 15 minutes.",
+            "Incorrect username or password.",
+            "Sign in to your profile.", "Sign in to NGS again.",
+        }: message = "Profile request rejected."
         payload = {'request_id': identity, 'ok': False, 'error': message}
         if isinstance(error, SessionExpired): payload['code'] = 'auth'
     response = {'status': 200, 'wire': seal(payload, key, kid=config['kid']).decode('ascii')}

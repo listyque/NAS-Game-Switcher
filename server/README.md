@@ -13,7 +13,7 @@ Your game library on your own NAS. Windows clients download games over HTTP(S); 
 5. Wait until `docker compose ps` shows healthy services.
 6. Open `http://NAS-IP:8890/assets/ngs_launcher/client/`.
 7. Install the Windows client from GitHub Releases. In **Settings → Account**, enter `http://NAS-IP:8890/tactic`.
-8. For the first local connection, copy **NGS local pairing code** from `docker compose logs app` into NGS. Register your player profile or sign in.
+8. In NAS administration choose **Connect NGS → Copy connection link**. Paste it into the server address field in NGS, confirm the server, then register or sign in. Older NAS packages expose **NGS local pairing code** through `docker compose logs app` instead.
 
 The server owner is **admin**, with the password you chose. Registration creates player accounts; it does not grant catalog or administration access. Use the owner account to add games with the catalog manager. The separate TACTIC administration login also uses `admin` and your chosen installation password.
 
@@ -25,7 +25,7 @@ The kit pulls `ghcr.io/listyque/nas-game-switcher/server:0.1.0-preview.2`, Postg
 2. In Package Center choose **Manual Install** and select **NGS-Synology-0.1.0-preview.2.spk**.
 3. Choose your game folder, an unused port and an admin password. Installer folders are optional; domains can be left blank.
 4. Wait for the package to start, then open **NAS Game Switcher** in DSM.
-5. Install NGS on Windows, enter the displayed server address and copy the local pairing code from the app container log in Container Manager. Register or sign in.
+5. Install NGS on Windows. In NAS administration choose **Connect NGS → Copy connection link**, paste it into NGS and confirm the server. Register or sign in. Older packages show a pairing code in the app container log in Container Manager instead.
 
 The SPK includes offline server images and uses Synology's Docker Project Worker. It does not require an SSH session or Docker commands for installation. Game folders stay read-only. Physical DSM installation is still awaiting device validation; this is a preview package.
 

@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock,patch
 from urllib.request import Request
+from urllib.error import HTTPError
 
 from Crypto.PublicKey import RSA
 from ngs import player_protocol as protocol
@@ -60,6 +61,13 @@ class RegistrationTests(unittest.TestCase):
         self.assertTrue(self.request(username='another-player')['ok'])
         self.assertFalse(self.request(username='rate-limited-player')['ok'])
 
+    def test_deliberate_account_errors_are_readable_and_internal_details_stay_hidden(self):
+        self.assertEqual(self.request()['error'], 'The server owner has disabled registration.')
+        self.assertEqual(self.request('login')['error'], 'Incorrect username or password.')
+        self.save('player_config','registration',dict(enabled=True))
+        self.assertEqual(self.request(password='12345678')['error'], 'Registration requires a password of 12–128 characters.')
+        self.assertEqual(self.request(role='owner')['error'], 'Profile request rejected.')
+
 
 class ServerConnectTests(unittest.TestCase):
     def setUp(self):
@@ -94,11 +102,37 @@ class ServerConnectTests(unittest.TestCase):
         with patch('urllib.request.build_opener',return_value=self.opener):
             self.opener.open.side_effect=ssl.SSLCertVerificationError('untrusted certificate')
             with self.assertRaises(ssl.SSLCertVerificationError):connect_server(self.storage,self.origin)
-            connect_server(self.storage,'http://nas.local:8890')
-            self.assertEqual(self.opener.open.call_count,1)
+            with patch('socket.getaddrinfo', return_value=[(2, 1, 6, '', ('192.168.1.2', 8890))]):
+                with self.assertRaises(ssl.SSLCertVerificationError): connect_server(self.storage,'http://nas.local:8890')
+            self.assertEqual(self.opener.open.call_count,2)
             public=self.fixture()
             self.opener.open.side_effect=[io.BytesIO(public),io.BytesIO(b'{"payload":"AA","signature":"AA"}')]
             with self.assertRaises(ValueError):connect_server(self.storage,self.origin)
+        self.assertFalse(list(self.storage.config.glob('server-trust-*.json')))
+
+    def test_old_server_without_key_file_still_requires_bundled_signature(self):
+        public = self.fixture()
+        self.storage.resources.joinpath('assets').mkdir(exist_ok=True)
+        fallback = self.storage.resources / 'assets/update-public-key.bin'
+        fallback.write_bytes(public)
+        # The descriptor comes from the existing fixture; only the new key URL is absent.
+        descriptor = list(self.opener.open.side_effect)[1]
+        self.opener.open.side_effect = [HTTPError(self.origin, 404, 'missing', {}, io.BytesIO()), descriptor]
+        with patch('urllib.request.build_opener', return_value=self.opener):
+            pin = connect_server(self.storage, self.origin)
+        self.assertEqual(pin.read_bytes(), public)
+
+    def test_missing_key_never_accepts_foreign_signature_or_bypasses_http_denial(self):
+        public = self.fixture()
+        descriptor = list(self.opener.open.side_effect)[1]
+        self.storage.resources.joinpath('assets').mkdir(exist_ok=True)
+        with RsaKey() as other:
+            (self.storage.resources / 'assets/update-public-key.bin').write_bytes(other.export())
+        self.opener.open.side_effect = [HTTPError(self.origin, 404, 'missing', {}, io.BytesIO()), descriptor]
+        with patch('urllib.request.build_opener', return_value=self.opener):
+            with self.assertRaises(ValueError): connect_server(self.storage, self.origin)
+            self.opener.open.side_effect = HTTPError(self.origin, 403, 'denied', {}, io.BytesIO())
+            with self.assertRaises(HTTPError): connect_server(self.storage, self.origin)
         self.assertFalse(list(self.storage.config.glob('server-trust-*.json')))
 
     def test_asset_token_only_goes_to_selected_https_nas_and_not_redirects(self):

@@ -58,8 +58,8 @@ The [illustrated user guide](docs/guide.md) covers both catalog managers, every 
 1. Download **NGS-Setup-*.exe** from [Releases](https://github.com/listyque/NAS-Game-Switcher/releases).
 2. Install and launch NGS. Choose the optional **NGS Input** component if you want controls over games; Windows asks for permission to install it.
 3. **Local library:** open **My games** and add a game folder or scan installed store games. No account or server is required.
-4. **Optional NAS:** open **Settings → Users and account → Connect a NAS server**, enter its address, then register or sign in.
-5. For NAS access over local HTTP, enter the pairing code from the NAS app log once. With trusted HTTPS this step is automatic. After sign-in, Catalog and Installers become available.
+4. **Optional NAS:** in the NAS administration choose **Connect NGS → Copy connection link**. Paste that link into **Settings → Users and account → Connect a NAS server** and confirm the server.
+5. Choose **Create account**, enter a username and repeat a password of at least 12 characters, or sign in to an existing account. The link supplies both the address and public key fingerprint; no separate key entry is needed. After sign-in, Catalog and Installers become available.
 
 **Requirements:** Windows 11 x64. Python is bundled. A portable ZIP is also available; extract the entire folder and run `NGS.exe`. Keep its `data` folder when moving or updating it.
 

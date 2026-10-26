@@ -26,7 +26,15 @@ If no provider has the game, choose **Add artwork manually** on that search scre
 
 ![Enter a title and description without a provider](../media/guide/custom-artwork-en.png)
 
-To connect later, open **Settings → Users and account → Connect a NAS server**, enter the address and sign in or register. Successful sign-in enables Catalog and Installers while preserving your local library and statistics. Previous local play history is uploaded only through the separate **Upload previous history** action. To return to local mode, choose **Use without a server** on the account page after active games and server operations finish.
+To connect later, get a link from **NAS administration → Connect NGS → Copy connection link**. It is a normal NAS address, for example `https://nas.example/tactic/ngs_launcher/#ngs-key=…`: it opens the server in a browser and supplies both the address and public fingerprint in NGS. Paste it into **Settings → Users and account → Connect a NAS server**, review the address and choose **Use this server**. This only fills the form; the server's signature is checked when you connect. Obtain the link through a trusted channel. It contains no password, login token or private key; the fragment is not sent in HTTP requests.
+
+![Confirm the NAS address from a connection link](../media/guide/account-connection-en.png)
+
+Choose **Create account** or **Sign in**. Usernames use 3–32 Latin letters, digits, periods, hyphens or underscores. New passwords need 12–128 characters and must be entered twice. Errors and server results stay visible below the form. A plain address also works: trusted HTTPS configures trust automatically; first-time local HTTP may require the code from the NAS log. Internet access requires trusted HTTPS.
+
+![Registration and a visible validation result; example data](../media/guide/account-registration-en.png)
+
+Successful sign-in enables Catalog and Installers while preserving local games and statistics. Previous history is uploaded only through **Upload previous history**. To return to local mode, choose **Use without a server** after active games and server operations finish.
 
 | Area | What it does |
 |---|---|

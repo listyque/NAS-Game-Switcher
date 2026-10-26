@@ -107,6 +107,8 @@ def build_plan():
             options=dict(class_name='tactic.ui.panel.ViewPanelWdg', search_type='ngs_launcher/' + table,
                          view='table', layout='default', search_limit='50', show_insert='false')))
     links.extend([
+        dict(name='ngs_connect', title='Connect NGS / Подключение NGS', options=dict(
+            class_name='tactic.ui.panel.CustomLayoutWdg', html='<%\nfrom ngs_launcher_plugin.connection import connection_panel\nbody_html=connection_panel()\n%>${body_html}')),
         dict(name='ngs_schema', title='Схема проекта', options=dict(class_name='tactic.ui.tools.SchemaToolWdg')),
         dict(name='ngs_columns', title='Редактор видов и колонок', options=dict(
             class_name='tactic.ui.manager.ViewManagerWdg', search_type='ngs_launcher/game', view='table')),

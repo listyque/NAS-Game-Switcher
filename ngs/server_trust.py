@@ -5,6 +5,28 @@ import hashlib
 from urllib.parse import urlsplit
 
 
+def connection_link(value):
+    """Parse public enrollment information without connecting or changing trust."""
+    import re
+    from urllib.parse import parse_qs
+    from ngs.i18n import tr
+    try:
+        if not isinstance(value, str) or len(value) > 2048 or any(ord(c) < 32 for c in value):
+            raise ValueError
+        parsed = urlsplit(value.strip())
+        fields = parse_qs(parsed.fragment, strict_parsing=True, max_num_fields=1)
+        if set(fields) != {'ngs-key'} or len(fields['ngs-key']) != 1: raise ValueError
+        fingerprint = fields['ngs-key'][0].lower()
+        if (parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password
+                or parsed.query or parsed.path not in ('', '/', '/tactic', '/tactic/', '/tactic/ngs_launcher', '/tactic/ngs_launcher/')
+                or any(ord(c) <= 32 for c in value.strip()) or not re.fullmatch('[0-9a-f]{64}', fingerprint)):
+            raise ValueError
+        if parsed.port is not None and not 1 <= parsed.port <= 65535: raise ValueError
+        return dict(server=parsed.scheme + '://' + parsed.netloc.lower() + '/tactic', fingerprint=fingerprint)
+    except ValueError:
+        raise ValueError(tr('Invalid NGS connection link. Copy the complete link from your NAS administrator.')) from None
+
+
 def server_key_path(storage, origin=None):
     from ngs.install import safe_path
     parsed = urlsplit(origin or storage.read_settings()['tactic_url'])
@@ -34,6 +56,7 @@ def server_key_path(storage, origin=None):
 def connect_server(storage, origin, expected_fingerprint=None):
     """Authenticate a NAS through verified TLS or an operator-supplied key fingerprint."""
     from urllib.request import Request, build_opener
+    from urllib.error import HTTPError
     from ngs.catalog import atomic_write
     from ngs.tactic import _NoRedirect
     from ngs.update_crypto import RsaKey
@@ -65,8 +88,14 @@ def connect_server(storage, origin, expected_fingerprint=None):
             raise ValueError('The pairing code differs from this server\'s saved identity; no trust was changed')
         return pinned
     opener = build_opener(_NoRedirect)
-    with opener.open(Request(origin + '/assets/ngs_launcher/server-public-key.bin'), timeout=12) as response:
-        public = response.read(284)
+    try:
+        with opener.open(Request(origin + '/assets/ngs_launcher/server-public-key.bin'), timeout=12) as response:
+            public = response.read(284)
+    except HTTPError as error:
+        error.close()
+        # Older NAS packages publish only the profile key signed by the bundled authority.
+        if error.code != 404 or not fallback.is_file(): raise
+        public = fallback.read_bytes()
     if len(public) != 283 or public[:4] != b'RSA1': raise ValueError("Invalid NGS server key.")
     if expected:
         if not hmac.compare_digest(hashlib.sha256(public).hexdigest(), expected):

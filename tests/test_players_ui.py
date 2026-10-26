@@ -2,13 +2,120 @@ import json
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtCore import QObject, QMetaObject
+from PySide6.QtCore import QObject, QMetaObject, QPointF
 from PySide6.QtTest import QTest
 
 from tests import test_ui
 
 
 class PlayerUiTests(unittest.TestCase):
+    def test_connection_link_requires_confirmation_and_never_saves_trust_by_pasting(self):
+        pane = self.window.findChild(QObject, 'playerAccountPane')
+        account = self.engine.bridge.players
+        saved_settings = account.storage.read_settings()
+        pins = set(account.storage.config.glob('server-trust*'))
+        link = 'https://other.example/tactic/ngs_launcher/#ngs-key=' + 'ab' * 32
+        QMetaObject.invokeMethod(pane, 'open'); QTest.qWait(180)
+        try:
+            pane.findChild(QObject, 'playerServerAddress').setProperty('text', link)
+            with patch.object(account, 'login') as login, patch.object(account, 'loginWithPairing') as paired:
+                QMetaObject.invokeMethod(pane, 'submit')
+                self.assertEqual(pane.property('selected'), 1)
+                self.assertIn('other.example', pane.findChild(QObject, 'playerConnectionPreview').property('text'))
+                self.assertEqual(account.storage.read_settings(), saved_settings)
+                self.assertEqual(set(account.storage.config.glob('server-trust*')), pins)
+                pane.findChild(QObject, 'playerCancelConnectionLink').clicked.emit()
+                self.assertEqual(pane.findChild(QObject, 'playerServerAddress').property('text'), link)
+                QMetaObject.invokeMethod(pane, 'reviewConnectionLink')
+                pane.findChild(QObject, 'playerAcceptConnectionLink').clicked.emit()
+                self.assertEqual(pane.findChild(QObject, 'playerServerAddress').property('text'), 'https://other.example/tactic')
+                self.assertEqual(pane.findChild(QObject, 'playerPairingCode').property('text'), 'ab' * 32)
+                self.assertTrue(pane.findChild(QObject, 'playerPairingCode').property('visible'))
+                self.assertEqual(account.storage.read_settings(), saved_settings)
+                self.assertEqual(set(account.storage.config.glob('server-trust*')), pins)
+                login.assert_not_called(); paired.assert_not_called()
+        finally:
+            QMetaObject.invokeMethod(pane, 'close'); QTest.qWait(180)
+
+    def test_registration_mode_validates_fields_and_keeps_result_visible(self):
+        pane = self.window.findChild(QObject, 'playerAccountPane')
+        account = self.engine.bridge.players
+        QMetaObject.invokeMethod(pane, 'open'); QTest.qWait(200)
+        try:
+            QMetaObject.invokeMethod(pane, 'register')
+            self.assertTrue(pane.property('registering'))
+            confirm = pane.findChild(QObject, 'playerConfirmPassword')
+            self.assertTrue(confirm.property('visible'))
+            with patch.object(account, 'login') as login:
+                pane.findChild(QObject, 'playerServerAddress').setProperty('text', '')
+                QMetaObject.invokeMethod(pane, 'submit')
+                self.assertIn('https://', pane.property('formError'))
+                pane.findChild(QObject, 'playerServerAddress').setProperty('text', account.origin())
+                pane.findChild(QObject, 'playerUsername').setProperty('text', 'a')
+                QMetaObject.invokeMethod(pane, 'submit')
+                self.assertTrue(pane.property('formError'))
+                pane.findChild(QObject, 'playerUsername').setProperty('text', 'valid-player')
+                pane.findChild(QObject, 'playerPassword').setProperty('text', '12345678')
+                QMetaObject.invokeMethod(pane, 'submit')
+                self.assertIn('12', pane.property('formError'))
+                pane.findChild(QObject, 'playerPassword').setProperty('text', 'long-test-password')
+                confirm.setProperty('text', 'different-password')
+                QMetaObject.invokeMethod(pane, 'submit')
+                self.assertTrue(pane.property('formError'))
+                self.assertEqual(pane.property('selected'), 4 if pane.findChild(QObject, 'playerPairingCode').property('visible') else 3)
+                login.assert_not_called()
+            status = pane.findChild(QObject, 'playerSyncStatus')
+            scroll = pane.findChild(QObject, 'playerAccountScroll')
+            for width, height in ((1280, 720), (1280, 800)):
+                self.window.resize(width, height); QTest.qWait(50)
+                self.window.grabWindow()
+                point = status.mapToScene(QPointF(0, 0))
+                self.assertGreater(point.y(), scroll.mapToScene(QPointF(0, 0)).y() + scroll.height())
+                self.assertLessEqual(point.y() + status.height(), height)
+            QMetaObject.invokeMethod(pane, 'register')
+            self.assertFalse(pane.property('registering'))
+            self.assertFalse(confirm.property('visible'))
+        finally:
+            QMetaObject.invokeMethod(pane, 'close'); QTest.qWait(200)
+
+    def test_login_and_registration_submit_and_clear_secrets_only_when_started(self):
+        pane = self.window.findChild(QObject, 'playerAccountPane')
+        account = self.engine.bridge.players
+        for registering in (False, True):
+            QMetaObject.invokeMethod(pane, 'open'); QTest.qWait(180)
+            if registering: QMetaObject.invokeMethod(pane, 'register')
+            pane.findChild(QObject, 'playerUsername').setProperty('text', 'valid-player')
+            pane.findChild(QObject, 'playerPassword').setProperty('text', 'long-test-password')
+            pane.findChild(QObject, 'playerConfirmPassword').setProperty('text', 'long-test-password')
+            try:
+                with patch('ngs.players.PlayerWorker.start') as start:
+                    QMetaObject.invokeMethod(pane, 'submit')
+                    start.assert_called_once()
+                    self.assertEqual(account.worker.action, 'register' if registering else 'login')
+                    self.assertEqual(account.worker.values['password'], 'long-test-password')
+                    self.assertEqual(pane.findChild(QObject, 'playerPassword').property('text'), '')
+                    self.assertEqual(pane.findChild(QObject, 'playerConfirmPassword').property('text'), '')
+                    self.assertEqual(pane.property('formError'), '')
+            finally:
+                if account.worker is not None: account.finished()
+                QMetaObject.invokeMethod(pane, 'close'); QTest.qWait(180)
+
+    def test_account_http_failure_is_not_reported_as_statistics_sync(self):
+        from urllib.error import HTTPError
+        from ngs.players import PlayerWorker
+        import io
+        account = self.engine.bridge.players
+        for action in ('login', 'register'):
+            failed = []
+            worker = PlayerWorker(account, action, dict(username='player', password='long-test-password'))
+            worker.failed.connect(lambda message, offline: failed.append(message))
+            with patch('ngs.players.connect_server', side_effect=HTTPError(account.origin(), 404, 'missing', {}, io.BytesIO())):
+                worker.run()
+            self.assertEqual(len(failed), 1)
+            self.assertNotIn('Retrying automatically', failed[0])
+            self.assertNotIn('синхрон', failed[0].lower())
+            self.assertEqual(worker.values, {})
+
     def test_profile_spinner_stops_when_closed_during_background_sync(self):
         account = self.engine.bridge.players
         pane = self.window.findChild(QObject, 'playerAccountPane')

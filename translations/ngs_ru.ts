@@ -6395,5 +6395,19 @@ The application folder must be writable.</source>
     <message><source>Game information and statistics</source><translation>Информация и статистика игры</translation></message>
     <message><source>Could not read statistics: </source><translation>Не удалось прочитать статистику: </translation></message>
     <message><source>The interface language changes after Apply, without restarting NGS or the game.</source><translation>Язык интерфейса меняется после «Применить», без перезапуска NGS и игры.</translation></message>
+    <message><source>Enter your NAS address starting with https:// or http://.</source><translation>Введите адрес NAS, начиная с https:// или http://.</translation></message>
+    <message><source>New accounts require 12 to 128 password characters.</source><translation>Для нового аккаунта нужен пароль от 12 до 128 символов.</translation></message>
+    <message><source>Passwords do not match.</source><translation>Пароли не совпадают.</translation></message>
+    <message><source>Repeat password</source><translation>Повторите пароль</translation></message>
+    <message><source>Already have an account? Sign in</source><translation>Уже есть аккаунт? Войти</translation></message>
+    <message><source>This server does not provide NGS accounts. Check the address and update the NAS package.</source><translation>На сервере недоступен вход в NGS. Проверьте адрес и обновите пакет NAS.</translation></message>
+    <message><source>The account server returned HTTP %d. Check the NAS service.</source><translation>Сервер аккаунтов вернул HTTP %d. Проверьте службу на NAS.</translation></message>
+    <message><source>Cannot connect to the account server. Check the address, network and NAS service, then try again.</source><translation>Не удалось подключиться к серверу аккаунтов. Проверьте адрес, сеть и службу на NAS и повторите попытку.</translation></message>
+    <message><source>Invalid NGS connection link. Copy the complete link from your NAS administrator.</source><translation>Некорректная ссылка подключения NGS. Скопируйте её целиком у владельца NAS.</translation></message>
+    <message><source>Connection details filled in. Sign in or create an account to connect.</source><translation>Данные сервера заполнены. Войдите или создайте аккаунт для подключения.</translation></message>
+    <message><source>Server address or NGS connection link</source><translation>Адрес сервера или ссылка подключения NGS</translation></message>
+    <message><source>Review connection link</source><translation>Проверить ссылку подключения</translation></message>
+    <message><source>Use this connection only if the link came from your NAS administrator. It contains no password and does not sign you in.</source><translation>Используйте подключение, только если ссылку передал владелец NAS. В ней нет пароля, и она не выполняет вход в аккаунт.</translation></message>
+    <message><source>Use this server</source><translation>Использовать этот сервер</translation></message>
   </context>
 </TS>

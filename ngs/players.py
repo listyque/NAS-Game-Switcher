@@ -9,6 +9,7 @@ import unicodedata
 import uuid
 from contextlib import closing
 from urllib.parse import urlsplit
+from urllib.error import HTTPError
 from urllib.request import Request, build_opener
 
 from PySide6.QtCore import QObject, Property, QThread, QTimer, Signal, Slot
@@ -20,7 +21,7 @@ from ngs.diagnostics import remember_secret
 from ngs.install import safe_path
 from ngs.tactic import _NoRedirect
 from ngs.update_crypto import RsaKey
-from ngs.server_trust import server_key_path, connect_server
+from ngs.server_trust import server_key_path, connect_server, connection_link
 from ngs.http_retry import transient_network_error
 
 
@@ -123,7 +124,7 @@ class PlayerTransport:
             raise ValueError(tr("The profile response does not match the request."))
         if not response['ok']:
             error = protocol.SessionExpired if response.get('code') == 'auth' else ValueError
-            raise error(response.get('error', tr("Request rejected.")))
+            raise error(tr(response.get('error', "Request rejected.")))
         return response['result']
 
 
@@ -278,8 +279,16 @@ class PlayerWorker(QThread):
         except Exception as error:
             if isinstance(error, protocol.SessionExpired): self.expired.emit()
             offline = transient_network_error(error)
-            self.failed.emit(str(error) if isinstance(error, (ValueError, RuntimeError, ConnectionError))
-                             else tr("Could not sync the profile. Retrying automatically."), offline)
+            if self.action in ('login', 'register') and isinstance(error, HTTPError):
+                error.close()
+                message = (tr("This server does not provide NGS accounts. Check the address and update the NAS package.")
+                           if error.code == 404 else tr("The account server returned HTTP %d. Check the NAS service.") % error.code)
+            elif self.action in ('login', 'register') and offline:
+                message = tr("Cannot connect to the account server. Check the address, network and NAS service, then try again.")
+            else:
+                message = (str(error) if isinstance(error, (ValueError, RuntimeError, ConnectionError))
+                           else tr("Could not sync the profile. Retrying automatically."))
+            self.failed.emit(message, offline)
         finally:
             self.values.clear()
 
@@ -437,9 +446,9 @@ class PlayerAccounts(QObject):
             if action in ('sync', 'flush', 'import') and self.worker is None: self.defer_background_retry()
             self.failure(str(error))
 
-    def worker_result(self, value):
-        if self.worker is not None: self.complete(self.worker.action, value)
-
+    def worker_result(self, value):
+        if self.worker is not None: self.complete(self.worker.action, value)
+
     def complete(self, action, value):
         if value == {'idle': True}: return
         self.offline = False
@@ -519,6 +528,11 @@ class PlayerAccounts(QObject):
 
     @Slot(str, str, bool)
     def login(self, name, password, register): self.start('register' if register else 'login', dict(username=name.strip(), password=password))
+    @Slot(str, result='QVariantMap')
+    def parseConnectionLink(self, value):
+        try: return connection_link(value)
+        except ValueError as error:
+            self.failure(str(error)); return {}
     @Slot(str, str, bool, str)
     def loginWithPairing(self, name, password, register, pairing_code):
         self.start('register' if register else 'login', dict(username=name.strip(), password=password, pairing_code=pairing_code))

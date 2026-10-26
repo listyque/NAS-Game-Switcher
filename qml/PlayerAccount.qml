@@ -11,6 +11,9 @@ ToolPage {
     property int selected: 0
     property bool wasLoggedIn: false
     property bool wasPrompted: false
+    property bool registering: false
+    property string formError: ""
+    property var pendingConnection: null
     property string chosenDeviceId: ""
     property int chosenBackupIndex: 0
     readonly property var deviceList: state.devices || []
@@ -30,13 +33,15 @@ ToolPage {
         const idx = Math.max(0, Math.min(revs.length - 1, chosenBackupIndex))
         return revs[idx]
     }
-    readonly property var controls: state.logged_in
+    readonly property var controls: pendingConnection ? [confirmConnectionButton, cancelConnectionButton, backButton] : state.logged_in
         ? [syncButton, historyButton, deviceBranchButton, backupRevisionButton, restoreAllButton, restoreSettingsButton, restoreLibraryButton, backupNowButton, deviceNameField, logoutButton, localButton, backButton]
-        : [serverField].concat(pairingField.visible ? [pairingField] : []).concat([nameField, passwordField, submitButton, registerButton, localButton, backButton])
+        : [serverField].concat(connectionLinkButton.visible ? [connectionLinkButton] : []).concat(pairingField.visible ? [pairingField] : []).concat([nameField, passwordField]).concat(registering ? [confirmPasswordField] : []).concat([submitButton, registerButton, localButton, backButton])
     pageScale: uiScale
     onAboutToShow: {
         serverField.text = root.bridge.settingsState.tactic_url
         passwordField.text = ""
+        confirmPasswordField.text = ""
+        registering = false; formError = ""; pendingConnection = null
         pairingField.text = ""
         deviceNameField.text = state.device_name || ""
         chosenDeviceId = state.backup_device || state.suggested_device || state.device_id || ""
@@ -51,6 +56,7 @@ ToolPage {
         pairingField.focus = false; pairingField.text = ""
         serverField.focus = false
         passwordField.text = ""
+        confirmPasswordField.text = ""; confirmPasswordField.focus = false
         nameField.focus = false
         passwordField.focus = false
         deviceNameField.focus = false
@@ -61,6 +67,7 @@ ToolPage {
         function onChanged() {
             if (root.state.logged_in && !root.wasLoggedIn) {
                 passwordField.text = ""
+                confirmPasswordField.text = ""
                 deviceNameField.text = root.state.device_name || ""
                 root.chosenDeviceId = root.state.suggested_device || root.state.backup_device || root.state.device_id || ""
                 root.chosenBackupIndex = 0
@@ -81,15 +88,53 @@ ToolPage {
             root.wasPrompted = !!root.state.backup_prompt
         }
     }
-    function submit() { authenticate(false) }
-    function register() { authenticate(true) }
+    function submit() { authenticate(registering) }
+    function register() {
+        registering = !registering; formError = ""; confirmPasswordField.text = ""
+        selected = controls.indexOf(registering ? nameField : submitButton)
+    }
+    function reviewConnectionLink() {
+        const parsed = account.parseConnectionLink(serverField.text.trim())
+        if (!parsed.server) { formError = state.status; return }
+        formError = ""; pendingConnection = parsed; selected = 1
+        serverField.focus = false; bridge.keyboard.hide()
+    }
+    function acceptConnectionLink() {
+        const parsed = pendingConnection
+        if (!parsed) return
+        serverField.text = parsed.server; pairingField.text = parsed.fingerprint
+        pendingConnection = null; selected = controls.indexOf(nameField)
+        formError = qsTranslate("NGS", "Connection details filled in. Sign in or create an account to connect.")
+    }
     function authenticate(registering) {
+        if (state.busy) return
+        formError = ""
         let address = serverField.text.trim().replace(/\/+$/, "")
+        if (address.indexOf("#") >= 0) { reviewConnectionLink(); return }
+        if (!/^https?:\/\/[^/\s]+(?:\/[^\s]*)?$/.test(address)) {
+            formError = qsTranslate("NGS", "Enter your NAS address starting with https:// or http://.")
+            selected = controls.indexOf(serverField); return
+        }
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,31}$/.test(nameField.text.trim())) {
+            formError = qsTranslate("NGS", "Username: 3–32 Latin letters, digits, periods, hyphens or underscores.")
+            selected = controls.indexOf(nameField); return
+        }
+        if (passwordField.text.length < (registering ? 12 : 8) || passwordField.text.length > 128) {
+            formError = registering ? qsTranslate("NGS", "New accounts require 12 to 128 password characters.") : qsTranslate("NGS", "The password must contain 8 to 128 characters.")
+            selected = controls.indexOf(passwordField); return
+        }
+        if (registering && passwordField.text !== confirmPasswordField.text) {
+            formError = qsTranslate("NGS", "Passwords do not match.")
+            selected = controls.indexOf(confirmPasswordField); return
+        }
         if (/^https?:\/\/[^/]+$/.test(address)) address += "/tactic"
-        if (address !== bridge.settingsState.tactic_url && !bridge.applySettings(Object.assign({}, bridge.settingsState, {tactic_url: address}))) return
+        if (address !== bridge.settingsState.tactic_url && !bridge.applySettings(Object.assign({}, bridge.settingsState, {tactic_url: address}))) {
+            formError = bridge.settingsStatus; return
+        }
         if (pairingField.visible && pairingField.text.trim()) account.loginWithPairing(nameField.text, passwordField.text, registering, pairingField.text.trim())
         else account.login(nameField.text, passwordField.text, registering)
-        passwordField.text = ""; serverField.focus = false; nameField.focus = false; passwordField.focus = false; bridge.keyboard.hide()
+        if (state.busy) { passwordField.text = ""; confirmPasswordField.text = "" }
+        serverField.focus = false; nameField.focus = false; passwordField.focus = false; confirmPasswordField.focus = false; bridge.keyboard.hide()
     }
     function cycleDevice(step) {
         const list = deviceList
@@ -123,7 +168,7 @@ ToolPage {
             }
         }
         if (["up", "down", "left", "right"].indexOf(action) >= 0) {
-            serverField.focus = false; pairingField.focus = false; nameField.focus = false; passwordField.focus = false; deviceNameField.focus = false
+            serverField.focus = false; pairingField.focus = false; nameField.focus = false; passwordField.focus = false; confirmPasswordField.focus = false; deviceNameField.focus = false
             const step = action === "down" || action === "right" ? 1 : -1
             for (let i = 0; i < controls.length; ++i) {
                 selected = (selected + step + controls.length) % controls.length
@@ -131,7 +176,7 @@ ToolPage {
             }
         } else if (action === "activate" && controls[selected].enabled) {
             const field = controls[selected]
-            if (field === serverField || field === pairingField || field === nameField || field === passwordField || field === deviceNameField) {
+            if (field === serverField || field === pairingField || field === nameField || field === passwordField || field === confirmPasswordField || field === deviceNameField) {
                 field.forceActiveFocus()
                 bridge.keyboard.show()
             } else {
@@ -187,35 +232,48 @@ ToolPage {
         spacing: 16 * root.uiScale
         Text {
             id: heading; objectName: "playerAccountHeading"
-            width: parent.width; text: root.state.logged_in ? qsTranslate("NGS", "Profile · ") + root.state.username : qsTranslate("NGS", "Sign in to NGS", "Вход в NGS")
+            width: parent.width; text: root.state.logged_in ? qsTranslate("NGS", "Profile · ") + root.state.username : root.registering ? qsTranslate("NGS", "Create account") : qsTranslate("NGS", "Sign in to NGS", "Вход в NGS")
             color: uiTheme.themeColors.text; font.pixelSize: 32 * root.uiScale; font.weight: Font.DemiBold; wrapMode: Text.WordWrap
         }
         ScrollView {
             id: accountScroll; objectName: "playerAccountScroll"
-            width: parent.width; height: parent.height - heading.height - backButton.height - parent.spacing * 2
+            width: parent.width; height: Math.max(0, parent.height - heading.height - backButton.height - accountStatus.height - parent.spacing * 3)
             clip: true; contentWidth: availableWidth; ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             Column {
                 id: accountForm; width: Math.min(accountScroll.availableWidth, 760 * root.uiScale); spacing: 14 * root.uiScale
                 FluidSurface {
+                    visible: !root.pendingConnection
                     width: parent.width; height: serverInfo.implicitHeight + 32 * root.uiScale
                     radius: 18; color: uiTheme.themeColors.base; glass: false; border.width: 0; shadowEnabled: false
                     Column {
                         id: serverInfo; x: 16 * root.uiScale; y: x; width: parent.width - x * 2; spacing: 6 * root.uiScale
                         Text { text: qsTranslate("NGS", "NGS server"); color: uiTheme.themeColors.text; font.pixelSize: 17 * root.uiScale; font.weight: Font.DemiBold }
                         Caption { objectName: "playerAccountServer"; visible: root.state.logged_in; text: root.bridge.settingsState.tactic_url; wrapMode: Text.WrapAnywhere }
-                        AccountField { id: serverField; objectName: "playerServerAddress"; visible: !root.state.logged_in; enabled: !root.state.busy; maximumLength: 500; placeholderText: qsTranslate("NGS", "https://your-server"); text: root.bridge.settingsState.tactic_url }
+                        AccountField { id: serverField; objectName: "playerServerAddress"; visible: !root.state.logged_in; enabled: !root.state.busy; maximumLength: 2048; placeholderText: qsTranslate("NGS", "Server address or NGS connection link"); text: root.bridge.settingsState.tactic_url; onTextEdited: { pairingField.text = ""; root.formError = "" } }
+                        AccountButton { id: connectionLinkButton; objectName: "playerReviewConnectionLink"; visible: serverField.visible && serverField.text.indexOf("#") >= 0; enabled: !root.state.busy; text: qsTranslate("NGS", "Review connection link"); onClicked: root.reviewConnectionLink() }
                         Text { visible: pairingField.visible; text: qsTranslate("NGS", "Local server pairing code"); color: uiTheme.themeColors.text; font.pixelSize: 16 * root.uiScale }
-                        AccountField { id: pairingField; objectName: "playerPairingCode"; visible: !root.state.logged_in && serverField.text.trim().startsWith("http://"); enabled: !root.state.busy; maximumLength: 128; placeholderText: qsTranslate("NGS", "Optional after pairing: 64-character code from NAS logs") }
+                        AccountField { id: pairingField; objectName: "playerPairingCode"; visible: !root.state.logged_in && (serverField.text.trim().startsWith("http://") || text.length > 0); enabled: !root.state.busy; maximumLength: 128; placeholderText: qsTranslate("NGS", "Optional after pairing: 64-character code from NAS logs") }
                         Caption { visible: pairingField.visible; text: qsTranslate("NGS", "Without HTTPS, copy the pairing code once from the NAS administration logs. Do not obtain it from an untrusted web page. Internet connections require HTTPS.") }
                     }
                 }
+                Column {
+                    visible: !!root.pendingConnection; width: parent.width; spacing: 12 * root.uiScale
+                    Caption { text: qsTranslate("NGS", "Use this connection only if the link came from your NAS administrator. It contains no password and does not sign you in.") }
+                    Caption { objectName: "playerConnectionPreview"; text: root.pendingConnection ? root.pendingConnection.server + "\nSHA-256: " + root.pendingConnection.fingerprint : ""; wrapMode: Text.WrapAnywhere; color: uiTheme.themeColors.text }
+                    AccountButton { id: confirmConnectionButton; objectName: "playerAcceptConnectionLink"; text: qsTranslate("NGS", "Use this server"); onClicked: root.acceptConnectionLink() }
+                    AccountButton { id: cancelConnectionButton; objectName: "playerCancelConnectionLink"; text: qsTranslate("NGS", "Cancel"); onClicked: { root.pendingConnection = null; root.selected = 0 } }
+                }
                 Caption { visible: !root.state.logged_in; text: qsTranslate("NGS", "Enter your server address. Sign in or create an account to access games, statistics and server backups. New accounts require a password of at least 12 characters.") }
                 Text { visible: nameField.visible; text: qsTranslate("NGS", "Username", "Логин"); color: uiTheme.themeColors.text; font.pixelSize: 17 * root.uiScale; font.weight: Font.DemiBold }
-                AccountField { id: nameField; objectName: "playerUsername"; visible: !root.state.logged_in; enabled: !root.state.busy; maximumLength: 32; placeholderText: qsTranslate("NGS", "Username", "Имя пользователя") }
+                AccountField { id: nameField; objectName: "playerUsername"; visible: !root.state.logged_in && !root.pendingConnection; enabled: !root.state.busy; maximumLength: 32; placeholderText: qsTranslate("NGS", "Username", "Имя пользователя") }
+                Caption { visible: root.registering && nameField.visible; text: qsTranslate("NGS", "Username: 3–32 Latin letters, digits, periods, hyphens or underscores.") }
                 Text { visible: passwordField.visible; text: qsTranslate("NGS", "Password"); color: uiTheme.themeColors.text; font.pixelSize: 17 * root.uiScale; font.weight: Font.DemiBold }
                 AccountField { id: passwordField; objectName: "playerPassword"; visible: nameField.visible; enabled: nameField.enabled; maximumLength: 128; echoMode: TextInput.Password; placeholderText: qsTranslate("NGS", "Account password"); onAccepted: root.submit() }
-                AccountButton { id: submitButton; objectName: "playerSubmit"; visible: nameField.visible; enabled: !root.state.busy; text: qsTranslate("NGS", "Sign in"); onClicked: root.submit() }
-                AccountButton { id: registerButton; objectName: "playerRegister"; visible: nameField.visible; enabled: !root.state.busy; glyph: "@add"; text: qsTranslate("NGS", "Create account"); onClicked: root.register() }
+                Caption { visible: root.registering && passwordField.visible; text: qsTranslate("NGS", "New accounts require 12 to 128 password characters.") }
+                Text { visible: confirmPasswordField.visible; text: qsTranslate("NGS", "Repeat password"); color: uiTheme.themeColors.text; font.pixelSize: 17 * root.uiScale; font.weight: Font.DemiBold }
+                AccountField { id: confirmPasswordField; objectName: "playerConfirmPassword"; visible: root.registering && nameField.visible; enabled: !root.state.busy; maximumLength: 128; echoMode: TextInput.Password; placeholderText: qsTranslate("NGS", "Repeat password"); onAccepted: root.submit() }
+                AccountButton { id: submitButton; objectName: "playerSubmit"; visible: nameField.visible; enabled: !root.state.busy; text: root.registering ? qsTranslate("NGS", "Create account") : qsTranslate("NGS", "Sign in"); onClicked: root.submit() }
+                AccountButton { id: registerButton; objectName: "playerRegister"; visible: nameField.visible; enabled: !root.state.busy; glyph: "@add"; text: root.registering ? qsTranslate("NGS", "Already have an account? Sign in") : qsTranslate("NGS", "Create account"); onClicked: root.register() }
 
                 AccountButton { id: syncButton; visible: root.state.logged_in; enabled: !root.state.busy; glyph: "@sync"; text: qsTranslate("NGS", "Sync statistics and backup list"); onClicked: { root.account.sync(); root.account.refreshBackups() } }
                 AccountButton { id: historyButton; objectName: "playerImportHistory"; visible: root.state.logged_in; enabled: !root.state.busy && root.state.legacy > 0; glyph: "@library"; text: qsTranslate("NGS", "Upload previous history · ") + root.state.legacy + qsTranslate("NGS", " sessions"); onClicked: root.account.importHistory() }
@@ -305,10 +363,13 @@ ToolPage {
                 AccountButton { id: logoutButton; visible: root.state.logged_in; enabled: !root.state.busy && !root.state.backup_busy; glyph: "@power"; text: qsTranslate("NGS", "Sign out"); onClicked: root.account.logout() }
                 Caption { visible: root.bridge.localMode; text: qsTranslate("NGS", "Local library is active. Connect and sign in only if you want NAS downloads, shared statistics and server backups.") }
                 AccountButton { id: localButton; objectName: "playerUseLocalLibrary"; visible: !root.bridge.localMode; enabled: !root.state.busy && !root.state.backup_busy; glyph: "@library"; text: qsTranslate("NGS", "Use without a server"); onClicked: if (root.bridge.useLocalLibrary()) root.close() }
-                ActivityIndicator { objectName: "playerSyncActivity"; running: root.visible && (root.state.busy || root.state.backup_busy); visible: running; width: 32 * root.uiScale; height: width }
-                Caption { objectName: "playerSyncStatus"; text: root.state.status + (root.state.logged_in ? qsTranslate("NGS", "\nWaiting to upload: ") + root.state.pending + qsTranslate("NGS", " sessions") : ""); color: root.state.busy ? uiTheme.themeColors.accent : uiTheme.themeColors.muted }
                 Caption { visible: !root.state.logged_in; text: qsTranslate("NGS", "Your password is not saved. The sign-in token is stored in the data folder; do not share that folder.") }
             }
+        }
+        Row {
+            id: accountStatus; width: parent.width; spacing: 12 * root.uiScale
+            ActivityIndicator { id: syncActivity; objectName: "playerSyncActivity"; running: root.visible && (root.state.busy || root.state.backup_busy); visible: running; width: running ? 32 * root.uiScale : 0; height: width }
+            Caption { objectName: "playerSyncStatus"; width: parent.width - (syncActivity.visible ? syncActivity.width + parent.spacing : 0); text: root.formError || (root.state.status + (root.state.logged_in ? qsTranslate("NGS", "\nWaiting to upload: ") + root.state.pending + qsTranslate("NGS", " sessions") : "")); color: uiTheme.themeColors.text; Accessible.role: Accessible.StaticText; Accessible.name: text }
         }
         AccountButton { id: backButton; width: Math.min(parent.width, 760 * root.uiScale); text: qsTranslate("NGS", "Back"); glyph: "@back"; onClicked: root.close() }
     }
