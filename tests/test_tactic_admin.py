@@ -69,6 +69,35 @@ class TacticAdminTests(unittest.TestCase):
         self.assertFalse(any(c.get('to')=='ngs_launcher/player_profile' for c in root.findall('connect')))
         ast.parse(inspect.getsource(configure_admin))
 
+    def test_connection_route_contains_no_inline_template_or_html_in_xml_options(self):
+        link = next(item for item in build_plan()['links'] if item['name'] == 'ngs_connect')
+        self.assertEqual(link['options'], {'class_name': 'ngs_launcher_plugin.connection_widget.ConnectionWdg'})
+        # HashPanelWdg embeds these values directly in a new XML display definition.
+        xml = '<element><display class="%s">%s</display></element>' % (
+            link['options']['class_name'], ''.join('<%s>%s</%s>' % (key, value, key)
+                                                 for key, value in link['options'].items() if key != 'class_name'))
+        self.assertEqual(ET.fromstring(xml).find('display').get('class'), link['options']['class_name'])
+
+    def test_existing_inline_connection_handler_migrates_once_and_keeps_other_nodes(self):
+        plan = build_plan()
+        with patch.dict(sys.modules, self.modules):
+            configure_admin(plan, True)
+            menu = next(row for row in self.rows['config/widget_config'] if row.get_value('search_type') == 'SideBarWdg' and row.get_value('view') == 'definition')
+            root = ET.fromstring(menu.get_value('config'))
+            display = root.find('.//element[@name="ngs_connect"]/display')
+            display.find('class_name').text = 'tactic.ui.panel.CustomLayoutWdg'
+            ET.SubElement(display, 'html').text = '<%\nbody_html="example"\n%>${body_html}'
+            menu.set_value('config', ET.tostring(root, encoding='unicode'))
+            old_names = [e.get('name') for e in root.find('definition')]
+            configure_admin(plan, True)
+            root = ET.fromstring(menu.get_value('config'))
+            self.assertEqual([e.get('name') for e in root.find('definition')], old_names)
+            display = root.find('.//element[@name="ngs_connect"]/display')
+            self.assertEqual(display.findtext('class_name'), 'ngs_launcher_plugin.connection_widget.ConnectionWdg')
+            self.assertIsNone(display.find('html'))
+            commits = len(self.commits); configure_admin(plan, True)
+            self.assertEqual(len(self.commits), commits)
+
     def test_summary_whitelists_scalars_and_escapes_markup(self):
         with patch.dict(sys.modules,self.modules):
             summary=admin_summary(dict(__search_type__='ngs_launcher/player_profile',
@@ -96,6 +125,40 @@ class TacticAdminTests(unittest.TestCase):
             self.assertEqual(configure_admin(plan,True)['added_configs'],[])
             self.assertEqual(len(self.commits),count)
             self.assertEqual(own.get_value('config'),'user-customized')
+
+    def test_connection_is_added_to_highest_priority_existing_menus_without_losing_custom_items(self):
+        plan = build_plan()
+        with patch.dict(sys.modules, self.modules):
+            configure_admin(plan, True)
+            menus = [r for r in self.rows['config/widget_config'] if r.get_value('search_type') == 'SideBarWdg']
+            expected = {}
+            for menu in menus:
+                view = menu.get_value('view')
+                root = ET.fromstring(menu.get_value('config')); node = root.find(view)
+                node.remove(next(e for e in node if e.get('name') == 'ngs_connect'))
+                ET.SubElement(node, 'element', name='custom_saved_link', title='My saved view')
+                expected[view] = [e.get('name') for e in node]
+                menu.set_value('config', ET.tostring(root, encoding='unicode'))
+                lower = self.Row('config/widget_config', search_type='SideBarWdg', view=view, priority=-100,
+                                 config='<config><%s><element name="ngs_connect"/></%s></config>' % (view, view))
+                self.rows['config/widget_config'].append(lower)
+                legacy = self.Row('config/widget_config', search_type='SideBarWdg', view=view, priority=None,
+                                  config='<config><%s><element name="legacy_custom_link"/></%s></config>' % (view, view))
+                self.rows['config/widget_config'].append(legacy)
+            result = configure_admin(plan, True)
+            self.assertEqual(set(result['added_configs']), {'SideBarWdg:definition', 'SideBarWdg:project_view'})
+            for menu in menus:
+                view = menu.get_value('view'); root = ET.fromstring(menu.get_value('config'))
+                self.assertEqual(menu.get_value('priority'), 100)
+                self.assertEqual([e.get('name') for e in root.find(view)], expected[view] + ['ngs_connect'])
+                self.assertEqual(root.find('.//element[@name="custom_saved_link"]').get('title'), 'My saved view')
+            legacy_menus = [r for r in self.rows['config/widget_config'] if r.get_value('search_type') == 'SideBarWdg' and r.get_data().get('priority') is None]
+            for menu in legacy_menus:
+                root = ET.fromstring(menu.get_value('config'))
+                self.assertEqual([e.get('name') for e in root.find(menu.get_value('view'))], ['legacy_custom_link', 'ngs_connect'])
+            commits = len(self.commits)
+            self.assertEqual(configure_admin(plan, True)['added_configs'], [])
+            self.assertEqual(len(self.commits), commits)
 
     def test_wrong_project_non_admin_and_changed_mapping_refuse_writes(self):
         for project,admin in [('open_heavens_cafe',True),('ngs_launcher',False)]:

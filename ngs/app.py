@@ -152,7 +152,7 @@ from ngs.packages import package_workspace, PACKAGE_SIZE
 from ngs.tactic import TacticClient
 from ngs.metadata import client_metadata, search_title
 from ngs.portable import configured_paths, path_list, path_key, game_sources
-from ngs.updates import current_version, check_update, prepare_update, start_installer
+from ngs.updates import current_version, check_update, check_server_update, prepare_update, start_installer
 from ngs.bulk_scan import LocalScanJournal, scan_collection
 from ngs import startup
 from ngs import crash_capture
@@ -491,15 +491,21 @@ class UpdateWorker(QThread):
     failed = Signal(str)
     progressed = Signal(float, str)
 
-    def __init__(self, storage, url, envelope, parent):
+    def __init__(self, storage, url, envelope, parent, refresh=True):
         super().__init__(parent)
         self.storage, self.url, self.envelope = storage, url, envelope
+        self.refresh = refresh
         self.cancel = threading.Event()
 
     def run(self):
         try:
-            result = (prepare_update(self.storage, self.envelope, self.cancel, self.progressed.emit, base_url=self.url) if self.envelope
-                      else check_update(self.storage, self.url, self.cancel))
+            from ngs.github_updates import OFFICIAL_UPDATE_URL
+            if self.envelope:
+                result = prepare_update(self.storage, self.envelope, self.cancel, self.progressed.emit, base_url=self.url)
+            elif self.url == OFFICIAL_UPDATE_URL:
+                result = check_update(self.storage, self.url, self.cancel)
+            else:
+                result = check_server_update(self.storage, self.url, self.cancel, self.refresh, self.progressed.emit)
             if not self.cancel.is_set():
                 self.loaded.emit(result)
         except Cancelled:
@@ -604,6 +610,7 @@ class LauncherBridge(QObject):
         self._installed = self.library.reconcile(self.librarySort)
         self._local_cards = None
         self.libraryChanged.connect(self.invalidate_local_cards)
+        self.libraryChanged.connect(self.installersChanged)
         self.download_queue = DownloadQueue(storage)
         self.settingsChanged.connect(self.downloadsChanged.emit)
         self.cleanup_worker = None
@@ -696,7 +703,7 @@ class LauncherBridge(QObject):
         self.action.connect(lambda action: event('ui.action', action=action))
         self.update_timer = QTimer(self)
         self.update_timer.setInterval(3600000)
-        self.update_timer.timeout.connect(self.checkUpdates)
+        self.update_timer.timeout.connect(lambda: self.checkUpdates(False))
         self._automatic_updates = (not demo and self._update['current'] != '0.0.0.0'
                                    and self.settings.get("auto_check_updates", True) is not False)
         if self._automatic_updates: self.update_timer.start(3500)
@@ -799,7 +806,13 @@ class LauncherBridge(QObject):
             if receipt["card"]["id"] not in ids:
                 card = receipt["card"]
                 cards.extend(self.installer_cache.present(dict(games=[card])) if self.installer_cache else [card])
-        return cards
+        receipts = [r for r in self._installed if not r.get('removing') and r.get('available', True)]
+        installed = {identity for r in receipts for identity in (r['card']['id'], r.get('catalog_id', '')) if identity}
+        metadata = {r['card']['metadata_url'].rstrip('/') for r in receipts if r['card'].get('metadata_url')}
+        downloaded = set(self.installerIds)
+        return [dict(card, package_downloaded=card['id'] in downloaded,
+                     game_installed=bool(card.get('game_id', card['id']) in installed
+                                         or card.get('metadata_url', '').rstrip('/') in metadata)) for card in cards]
 
     @Property("QVariantList", notify=installersChanged)
     def installerIds(self):
@@ -2288,7 +2301,7 @@ class LauncherBridge(QObject):
     @Property(str, notify=settingsChanged)
     def updateSource(self):
         from ngs.github_updates import OFFICIAL_UPDATE_URL
-        return self.settings.get('update_url') or OFFICIAL_UPDATE_URL
+        return OFFICIAL_UPDATE_URL if self.localMode else self.settings['tactic_url']
 
     @Property("QVariantMap", notify=updatesChanged)
     def updatesState(self):
@@ -2301,14 +2314,14 @@ class LauncherBridge(QObject):
     def remoteCatalogizer(self): return self.catalogizer
 
     @Slot()
-    def checkUpdates(self):
-        if self._automatic_updates: self.update_timer.start(3600000)
+    def checkUpdates(self, refresh=True):
+        if self._automatic_updates: self.update_timer.start(86400000 if self.localMode else 3600000)
         if self.update_worker is not None or self._closing or self._sleeping:
             if self._sleeping: self.update_timer.stop()
             return
         self._update.update(busy=True, status=tr("Checking for updates…"), progress=0.0)
         event('update.check', server=self.updateSource, current=self._update['current'])
-        self.update_worker = UpdateWorker(self.storage, self.updateSource, None, self)
+        self.update_worker = UpdateWorker(self.storage, self.updateSource, None, self, refresh)
         self.connect_update_worker()
 
     @Slot()
@@ -2345,12 +2358,12 @@ class LauncherBridge(QObject):
     def update_failed(self, message):
         event('update.error', error=message)
         self._update_install_pending = False
-        self._update["status"] = message
+        self._update["status"] = tr(message)
         self.updatesChanged.emit()
 
     @Slot(float, str)
     def update_progress(self, fraction, message):
-        self._update.update(progress=fraction, status=message)
+        self._update.update(progress=fraction, status=tr(message))
         self.updatesChanged.emit()
 
     @Slot()

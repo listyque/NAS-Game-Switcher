@@ -184,11 +184,15 @@ def metadata_web(protocol, claim_source, release_source, diagnostics_source='', 
             raise ns["ApiRejected"](claim["status"], "DeviceBusy" if claim.get('reason') == 'busy' else "Request rejected")
         claimed = True
         stage = "metadata"
-        cmd = (PythonCmd(code=diagnostics_source, payload=value, device=device) if operation == 'diagnostics' else PythonCmd(code=backup_source, payload=value, device=device, account=account) if operation == 'backup' else
+        if operation == 'updates':
+            from ngs_launcher_plugin.update_mirror import request_check
+            result = request_check(force=value['action'] == 'refresh', start=value['action'] != 'status')
+        else:
+            cmd = (PythonCmd(code=diagnostics_source, payload=value, device=device) if operation == 'diagnostics' else PythonCmd(code=backup_source, payload=value, device=device, account=account) if operation == 'backup' else
                PythonCmd(script_path="ngs/catalog", action=value["action"], payload=value, device=device)
                if operation in ("catalog", "transfer") else PythonCmd(script_path="ngs/metadata", operation=operation, value=value))
-        Command.execute_cmd(cmd)
-        result = cmd.get_info()
+            Command.execute_cmd(cmd)
+            result = cmd.get_info()
         if operation == "catalog" and value["action"] in ("publish", "installer_publish", "status", "installer_status"):
             # Keep separate commits: activate must see a successfully committed export snapshot.
             for unused in range(2):

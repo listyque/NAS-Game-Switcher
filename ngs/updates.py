@@ -78,6 +78,32 @@ def check_update(storage, base_url, cancel):
     return envelope if version_key(release["version"]) > version_key(current_version(storage)) else None
 
 
+def check_server_update(storage, base_url, cancel, refresh=False, progress=lambda *args: None):
+    from ngs.api import MetadataApi
+    api = MetadataApi(storage, base_url)
+    action = 'refresh' if refresh else 'check'
+    deadline = time.monotonic() + 1900
+    while True:
+        check_cancel(cancel)
+        state = api.call('updates', dict(action=action))
+        if not isinstance(state, dict) or state.get('state') not in ('checking', 'ready', 'error'):
+            raise ValueError('Invalid server update response')
+        if state['state'] == 'error':
+            raise ValueError('The NAS could not check or cache the update. Try again later.')
+        if state['state'] == 'ready':
+            envelope = state.get('envelope')
+            if envelope is None: return None
+            release = verify_envelope(envelope, (storage.resources / 'assets/update-public-key.bin').read_bytes())
+            return envelope if version_key(release['version']) > version_key(current_version(storage)) else None
+        done, total = state.get('done', 0), state.get('total', 0)
+        if any(type(n) is not int for n in (done, total)) or not 0 <= done <= total <= 1024**3:
+            raise ValueError('Invalid server update progress')
+        progress(done / total if total else 0, 'The NAS is downloading the update…' if total else 'The NAS is checking GitHub…')
+        if time.monotonic() > deadline: raise TimeoutError('The NAS update check timed out. Try again later.')
+        cancel.wait(2)
+        action = 'status'
+
+
 def clean_directory(storage, relative):
     if relative not in {"data/updates/" + name for name in ("prepared", "backup", "failed-runtime", "probe")}:
         raise ValueError("Only updater-owned directories can be cleaned")

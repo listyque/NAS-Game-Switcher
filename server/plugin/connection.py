@@ -28,7 +28,7 @@ placeholder="https://your-nas" onfocus="if(!this.value)this.value=location.origi
 <button type="button" onclick="
 var panel=this.parentNode,address=panel.querySelector('.ngs-connect-address'),link=panel.querySelector('.ngs-connect-link');
 var value=address.value.trim()||location.origin;
-try{var server=new URL(value);if(!/^https?:$/.test(server.protocol)||server.username||server.password||server.search||server.hash||!/^\\/(tactic\\/?)?$/.test(server.pathname))throw Error();
+try{var server=new window.URL(value);if(!/^https?:$/.test(server.protocol)||server.username||server.password||server.search||server.hash||!/^\\/(tactic\\/?)?$/.test(server.pathname))throw Error();
 link.value=server.origin+'/tactic/ngs_launcher/#ngs-key=FINGERPRINT';
 link.focus();link.select();
 if(navigator.clipboard){if(isSecureContext){navigator.clipboard.writeText(link.value).catch(function(){link.focus();link.select();});return;}}

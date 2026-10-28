@@ -51,11 +51,7 @@ insert.set_value('config', """<config>
     </element>
     <element name="ngs_connect" title="Connect NGS / Подключение NGS">
       <display class="LinkWdg">
-        <class_name>tactic.ui.panel.CustomLayoutWdg</class_name>
-        <html>&lt;%
-from ngs_launcher_plugin.connection import connection_panel
-body_html = connection_panel()
-%&gt;${body_html}</html>
+        <class_name>ngs_launcher_plugin.connection_widget.ConnectionWdg</class_name>
       </display>
     </element>
   </definition>

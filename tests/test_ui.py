@@ -1234,7 +1234,13 @@ class UiTests(unittest.TestCase):
             self.assertFalse(imported["managed"])
             self.assertEqual(imported["kind"], "external")
             self.assertNotIn("kind", imported["card"])
+            state = next(game for game in bridge.installerGames if game['id'] == card['id'])
+            self.assertTrue(state['game_installed'])
+            self.assertTrue(state['package_downloaded'])
             bridge.library.forget(imported["card"]["id"])
+            bridge._installed = bridge.library.reconcile(bridge.librarySort)
+            bridge.libraryChanged.emit()
+            self.assertFalse(next(game for game in bridge.installerGames if game['id'] == card['id'])['game_installed'])
             self.assertEqual((installed / "play.exe").read_bytes(), pe)
             imported = None
         finally:
@@ -2492,7 +2498,7 @@ class UiTests(unittest.TestCase):
         try:
             bridge._update.update(available=True, version='2099.01.01.000000')
             bridge._update_envelope = envelope
-            with patch('ngs.app.check_update', side_effect=ConnectionError('offline')):
+            with patch('ngs.app.check_server_update', side_effect=ConnectionError('offline')):
                 bridge.checkUpdates()
                 self.assertTrue(bridge.updatesState['available'])
                 for unused in range(300):
@@ -2501,10 +2507,22 @@ class UiTests(unittest.TestCase):
                 self.assertIsNone(bridge.update_worker)
             self.assertTrue(bridge.updatesState['available'])
             self.assertEqual(bridge._update_envelope, envelope)
-            self.assertEqual(bridge.update_timer.interval(), 300000)
+            self.assertEqual(bridge.update_timer.interval(), 3600000)
         finally:
             bridge._update, bridge._update_envelope = old
             bridge.updatesChanged.emit()
+
+    def test_update_source_uses_selected_nas_despite_legacy_github_setting(self):
+        from ngs.github_updates import OFFICIAL_UPDATE_URL
+        bridge = self.engine.bridge
+        old = dict(bridge.settings)
+        try:
+            bridge.settings.update(local_mode=False, update_url=OFFICIAL_UPDATE_URL)
+            self.assertEqual(bridge.updateSource, bridge.settings['tactic_url'])
+            bridge.settings['local_mode'] = True
+            self.assertEqual(bridge.updateSource, OFFICIAL_UPDATE_URL)
+        finally:
+            bridge.settings = old
 
     def test_bb_updates_gamepad_check_install_and_cancel(self):
         import copy, json, threading
@@ -2524,7 +2542,7 @@ class UiTests(unittest.TestCase):
             self.fail("Update worker did not finish")
         try:
             bridge._update["current"] = "2026.10.15.120000"
-            with patch("ngs.app.check_update", return_value=envelope), \
+            with patch("ngs.app.check_server_update", return_value=envelope), \
                  patch("ngs.app.prepare_update", return_value=release) as prepare, \
                  patch("ngs.app.start_installer") as launch, patch.object(bridge, "quit") as quit:
                 bridge.action.emit("settings")
@@ -2550,7 +2568,7 @@ class UiTests(unittest.TestCase):
                 def pending(*args):
                     started.set(); finish.wait(2)
                     return envelope
-                with patch("ngs.app.check_update", side_effect=pending):
+                with patch("ngs.app.check_server_update", side_effect=pending):
                     bridge.action.emit("refresh")
                     QTest.qWait(50)
                     self.assertTrue(started.is_set())
@@ -3650,7 +3668,7 @@ class UiTests(unittest.TestCase):
         try:
             self.engine.bridge.setGamesView('grid')
             self.window.showFullScreen()
-            with patch("ngs.app.check_update", return_value=None):
+            with patch("ngs.app.check_server_update", return_value=None):
                 passed = portable_check(self.storage, self.window)
                 for unused in range(100):
                     QTest.qWait(10)

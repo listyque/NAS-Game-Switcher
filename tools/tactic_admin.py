@@ -108,7 +108,7 @@ def build_plan():
                          view='table', layout='default', search_limit='50', show_insert='false')))
     links.extend([
         dict(name='ngs_connect', title='Connect NGS / Подключение NGS', options=dict(
-            class_name='tactic.ui.panel.CustomLayoutWdg', html='<%\nfrom ngs_launcher_plugin.connection import connection_panel\nbody_html=connection_panel()\n%>${body_html}')),
+            class_name='ngs_launcher_plugin.connection_widget.ConnectionWdg')),
         dict(name='ngs_schema', title='Схема проекта', options=dict(class_name='tactic.ui.tools.SchemaToolWdg')),
         dict(name='ngs_columns', title='Редактор видов и колонок', options=dict(
             class_name='tactic.ui.manager.ViewManagerWdg', search_type='ngs_launcher/game', view='table')),
@@ -172,8 +172,28 @@ def configure_admin(plan, apply=False):
     def save_config(search_type, view, xml, category=''):
         obj = next((o for o in configs if o.get_value('search_type') == search_type and o.get_value('view') == view
                     and o.get_value('description') == owner), None)
-        # User edits to our installed views are authoritative on subsequent runs.
-        if obj is not None: return
+        # Preserve existing layouts; add the connection action to the authoritative menu.
+        if obj is not None:
+            if search_type != 'SideBarWdg': return
+            # PostgreSQL DESC selects legacy NULL priorities before numbered configs.
+            targets = [o for o in configs if o.get_value('search_type') == search_type and o.get_value('view') == view
+                       and (o is obj or o.get_data().get('priority') is None)]
+            for target in targets:
+                current = ET.fromstring(target.get_value('config'))
+                node = current.find(view)
+                if node is None: continue
+                connection = ET.fromstring(xml).find('./' + view + '/element[@name="ngs_connect"]')
+                if connection is None: continue
+                existing = next((e for e in node if e.get('name') == 'ngs_connect'), None)
+                if existing is None:
+                    node.append(connection)
+                else:
+                    display = existing.find('display')
+                    if display is None or display.findtext('class_name') != 'tactic.ui.panel.CustomLayoutWdg': continue
+                    existing.remove(display); existing.append(connection.find('display'))
+                target.set_value('config', ET.tostring(current, encoding='unicode'))
+                target.commit(); changed.append(search_type + ':' + view)
+            return
         obj = SearchType.create('config/widget_config')
         for key, value in dict(search_type=search_type, view=view, config=xml, description=owner,
                                category=category, login='', priority=100).items(): obj.set_value(key, value)

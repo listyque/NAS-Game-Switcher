@@ -47,6 +47,10 @@ def validate_payload(payload):
     if not isinstance(payload, dict) or set(payload) != {"operation", "value"}:
         raise ValueError("Expected only operation and value")
     operation, value = payload["operation"], payload["value"]
+    if operation == 'updates':
+        if not isinstance(value, dict) or set(value) != {'action'} or value['action'] not in ('check', 'refresh', 'status'):
+            raise ValueError('Invalid update check request')
+        return operation, value
     if operation == 'diagnostics': return operation, validate_diagnostic_request(value)
     if operation == 'backup': return operation, validate_backup_request(value)
     if operation in ("catalog", "transfer"):
@@ -101,7 +105,12 @@ def claim_state(state, nonce, operation, now):
             or type(row[0]) is not int or not isinstance(row[1], str) for row in backup)):
         raise ValueError('Invalid backup history')
     backup = [row for row in backup if row[0] >= now - 600]
-    if any(row[1] == nonce for row in recent + diagnostic + backup):
+    updates = state.get('update_recent', [])
+    if (not isinstance(updates, list) or len(updates) > 360 or any(not isinstance(row, list) or len(row) != 2
+            or type(row[0]) is not int or not isinstance(row[1], str) for row in updates)):
+        raise ValueError('Invalid update history')
+    updates = [row for row in updates if row[0] >= now - 600]
+    if any(row[1] == nonce for row in recent + diagnostic + backup + updates):
         raise ApiRejected(409, "Repeated request")
     if operation == 'diagnostics':
         if len(diagnostic) >= 180: raise ApiRejected(429, 'Diagnostic request limit reached')
@@ -110,6 +119,9 @@ def claim_state(state, nonce, operation, now):
     if operation == 'backup':
         if len(backup) >= 240: raise ApiRejected(429, 'Backup request limit reached')
         return dict(state, schema=1, backup_recent=backup + [[now, nonce]])
+    if operation == 'updates':
+        if len(updates) >= 360: raise ApiRejected(429, 'Request limit reached; retry later')
+        return dict(state, schema=1, update_recent=updates + [[now, nonce]])
     if state.get("busy_until", 0) > now:
         raise ApiRejected(409, "Another metadata request is running")
     group = ("search", "resolve") if operation in ("search", "resolve") else (operation,)

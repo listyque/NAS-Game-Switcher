@@ -40,7 +40,7 @@ Successful sign-in enables Catalog and Installers while preserving local games a
 |---|---|
 | **My games** | Games already available on this device, including supported store entries and folders you add yourself. Use the add/scan action to find local games. |
 | **Catalog** | Ready-to-play games published on your NAS. Download a game to a local destination before playing. |
-| **Installers** | Installation packages published on the NAS. Download the complete package, run its setup, then add the installed game to My games. |
+| **Installers** | Installation packages from the NAS. Cards distinguish Not downloaded, Downloaded and Game installed. Package download and game installation have separate filters. Run setup, then add its installed game to My games; an installed game's package offers Reinstall. Removing the package preserves the game. |
 | **Search** | Find games in the current library. |
 | **Filters** | Filter by genre and availability. Local-library filters also help find unplayed or unavailable games. Available choices depend on the section. |
 | **Sort** | Recently played, date added, title or genre; choose the order. |
@@ -233,6 +233,8 @@ The settings home contains six sections. All settings on this screen stay as a d
 **Production mode** disables diagnostic logs, tracing and diagnostic uploads. NGS restarts to apply it, or waits until the current game closes.
 
 ![Catalog and publishing settings](../media/guide/settings-catalog-en.png)
+
+With the updated server and client, NGS updates follow **GitHub → your TACTIC server → handheld**. The NAS checks daily, preloads and verifies the package, then makes it available to clients. **Check for updates** requests a check immediately and shows progress while the NAS downloads; the handheld receives the ready package from the NAS. Local-only clients use GitHub directly. See [server update requirements](../server/README.md#updates-and-backups).
 
 ## Installation and screenshot notes
 

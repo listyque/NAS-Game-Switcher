@@ -23,6 +23,37 @@ from ngs.updates import VERSION_PATTERN
 
 
 class UpdateTests(unittest.TestCase):
+    def test_server_check_waits_for_cache_then_uses_only_nas_for_signed_package(self):
+        from ngs.updates import check_server_update
+        envelope = self.package()
+        cancel = threading.Event()
+        api = Mock()
+        api.call.side_effect = [dict(state='checking', done=1, total=2), dict(state='ready', envelope=envelope)]
+        progress = Mock()
+        with patch('ngs.api.MetadataApi', return_value=api), patch.object(cancel, 'wait'), \
+             patch('ngs.github_updates.GitHubReleases.manifest') as github:
+            self.assertEqual(check_server_update(self.storage, self.url, cancel, True, progress), envelope)
+            self.assertEqual(api.call.call_args_list[0].args, ('updates', dict(action='refresh')))
+            self.assertEqual(api.call.call_args_list[1].args, ('updates', dict(action='status')))
+            self.assertEqual(progress.call_args.args[0], .5)
+            prepare_update(self.storage, envelope, cancel, base_url=self.url)
+            github.assert_not_called()
+        self.assertTrue((self.storage.data / 'updates/prepared/runtime/NGS.exe').exists())
+
+    def test_server_check_failure_and_cancellation_do_not_fall_back_to_github(self):
+        from ngs.updates import check_server_update
+        api = Mock(); cancel = threading.Event()
+        with patch('ngs.api.MetadataApi', return_value=api), patch('ngs.github_updates.GitHubReleases') as github:
+            for state in [dict(state='error'), dict(state='checking', done=3, total=1), dict(state='unknown')]:
+                api.call.return_value = state
+                with self.assertRaises(ValueError): check_server_update(self.storage, self.url, cancel)
+            api.call.return_value = dict(state='ready', envelope=self.sign(dict(self.release, version='2026.10.14.120000')))
+            self.assertIsNone(check_server_update(self.storage, self.url, cancel))
+            self.assertEqual(api.call.call_args.args, ('updates', dict(action='check')))
+            cancel.set()
+            with self.assertRaises(Cancelled): check_server_update(self.storage, self.url, cancel)
+            github.assert_not_called()
+
     def test_organized_release_still_requires_exact_checks_before_any_server_access(self):
         from tools.publish_update import publish
         reports=self.storage.root/'reports';reports.mkdir()

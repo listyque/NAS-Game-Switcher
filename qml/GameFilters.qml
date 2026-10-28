@@ -15,6 +15,8 @@ MotionPopup {
     property int resultCount: 0
     readonly property string mode: statusKeys[statusIndex] || "all"
     readonly property string genre: genres[genreChoice.currentIndex - 1] || ""
+    readonly property int statusCount: statusLabels.length
+    readonly property int controlCount: statusCount + 4
     signal submitted(string mode, string genre)
     x: (parent.width - width) / 2; y: (parent.height - height) / 2
     width: Math.min(parent.width - 32, 680 * uiScale)
@@ -42,12 +44,12 @@ MotionPopup {
         }
         if (action === "back" || action === "menu") close()
         else if (["up", "down", "left", "right"].indexOf(action) >= 0)
-            selectedField = (selectedField + (action === "up" || action === "left" ? 6 : 1)) % 7
+            selectedField = (selectedField + (action === "up" || action === "left" ? controlCount - 1 : 1)) % controlCount
         else if (action === "activate") {
-            if (selectedField < 3) statusIndex = selectedField
-            else if (selectedField === 3) genreChoice.popup.open()
-            else if (selectedField === 4) apply(mode, genre)
-            else if (selectedField === 5) apply("all", "")
+            if (selectedField < statusCount) statusIndex = selectedField
+            else if (selectedField === statusCount) genreChoice.popup.open()
+            else if (selectedField === statusCount + 1) apply(mode, genre)
+            else if (selectedField === statusCount + 2) apply("all", "")
             else close()
         }
     }
@@ -60,7 +62,7 @@ MotionPopup {
         spacing: 16 * root.uiScale
         Text { text: qsTranslate("NGS", "Filters · ") + root.sectionName; color: uiTheme.themeColors.text; font.pixelSize: 25 * root.uiScale }
         Text { text: qsTranslate("NGS", "Status"); color: uiTheme.themeColors.muted; font.pixelSize: 16 * root.uiScale }
-        Row {
+        Flow {
             width: parent.width; spacing: 8 * root.uiScale
             Repeater {
                 model: root.statusLabels
@@ -82,8 +84,8 @@ MotionPopup {
             model: [qsTranslate("NGS", "All genres")].concat(root.genres)
             focusPolicy: Qt.NoFocus
             font.pixelSize: 16 * root.uiScale
-            FocusFrame { anchors.fill: parent; selected: root.selectedField === 3; radius: 8 }
-            onPressedChanged: if (pressed) root.selectedField = 3
+            FocusFrame { anchors.fill: parent; selected: root.selectedField === root.statusCount; radius: 8 }
+            onPressedChanged: if (pressed) root.selectedField = root.statusCount
             delegate: FilterButton {
                 required property int index
                 width: genreChoice.width - 12
@@ -95,9 +97,9 @@ MotionPopup {
         Text { objectName: "gameFilterResultCount"; text: qsTranslate("NGS", "Games found: ") + root.resultCount; color: uiTheme.themeColors.muted; font.pixelSize: 16 * root.uiScale }
         Row {
             width: parent.width; spacing: 10 * root.uiScale
-            FilterButton { objectName: "applyGameFilters"; text: qsTranslate("NGS", "Apply"); width: (parent.width - 2 * parent.spacing) / 3; highlighted: root.selectedField === 4; onClicked: root.apply(root.mode, root.genre) }
-            FilterButton { objectName: "resetGameFilters"; text: qsTranslate("NGS", "Reset"); width: (parent.width - 2 * parent.spacing) / 3; highlighted: root.selectedField === 5; onClicked: root.apply("all", "") }
-            FilterButton { objectName: "closeGameFilters"; text: qsTranslate("NGS", "Back · ") + root.backHint; width: (parent.width - 2 * parent.spacing) / 3; highlighted: root.selectedField === 6; onClicked: root.close() }
+            FilterButton { objectName: "applyGameFilters"; text: qsTranslate("NGS", "Apply"); width: (parent.width - 2 * parent.spacing) / 3; highlighted: root.selectedField === root.statusCount + 1; onClicked: root.apply(root.mode, root.genre) }
+            FilterButton { objectName: "resetGameFilters"; text: qsTranslate("NGS", "Reset"); width: (parent.width - 2 * parent.spacing) / 3; highlighted: root.selectedField === root.statusCount + 2; onClicked: root.apply("all", "") }
+            FilterButton { objectName: "closeGameFilters"; text: qsTranslate("NGS", "Back · ") + root.backHint; width: (parent.width - 2 * parent.spacing) / 3; highlighted: root.selectedField === root.statusCount + 3; onClicked: root.close() }
         }
     }
 }

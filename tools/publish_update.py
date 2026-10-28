@@ -204,13 +204,27 @@ def release_action(envelope, activate=False):
     if target.is_symlink() or not target.resolve().is_relative_to(directory):
         raise ValueError("Redirected NGS update feed")
     name = None
+    lock = None
     try:
+        if os.name != 'nt':
+            import fcntl
+            lock_path = folder / '.feed.lock'
+            if lock_path.is_symlink(): raise ValueError('Redirected NGS publication lock')
+            lock = lock_path.open('ab')
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        if target.exists():
+            if target.stat().st_size > 20000: raise ValueError('Oversized NGS feed')
+            current = json.loads(json.loads(target.read_bytes())['payload'])
+            if current['version'] > latest.get_code():
+                return dict(project='ngs_launcher',version=release['version'],latest=current['version'],
+                            feed='/assets/ngs_launcher/updates.json')
         with tempfile.NamedTemporaryFile(dir=directory, prefix=".ngs-update-", delete=False) as stream:
             name = stream.name
             stream.write(latest.get_value("published_data").encode("utf8")); stream.flush(); os.fsync(stream.fileno())
         os.replace(name, target)
     finally:
         if name and os.path.exists(name): os.unlink(name)
+        if lock: lock.close()
     if Config.get_value("install", "default_project") != before:
         raise RuntimeError("Default project changed unexpectedly")
     return dict(project="ngs_launcher", version=release["version"], latest=latest.get_code(),

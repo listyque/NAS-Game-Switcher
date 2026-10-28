@@ -6409,5 +6409,17 @@ The application folder must be writable.</source>
     <message><source>Review connection link</source><translation>Проверить ссылку подключения</translation></message>
     <message><source>Use this connection only if the link came from your NAS administrator. It contains no password and does not sign you in.</source><translation>Используйте подключение, только если ссылку передал владелец NAS. В ней нет пароля, и она не выполняет вход в аккаунт.</translation></message>
     <message><source>Use this server</source><translation>Использовать этот сервер</translation></message>
+    <message><source>Game installed</source><translation>Игра установлена</translation></message>
+    <message><source>Game not installed</source><translation>Игра не установлена</translation></message>
+    <message><source>Package downloaded</source><translation>Пакет скачан</translation></message>
+    <message><source>Package not downloaded</source><translation>Пакет не скачан</translation></message>
+    <message><source>Reinstall</source><translation>Переустановить</translation></message>
+    <message><source>The game is available in My games. Downloading or removing the installer package does not change the installed game.</source><translation>Игра доступна в «Моих играх». Скачивание или удаление пакета установщика не меняет установленную игру.</translation></message>
+    <message><source>Run the installer, then choose Add an installed game and confirm the game's executable. Opening the installer alone does not mark the game as installed.</source><translation>Запустите установщик, затем нажмите «Добавить установленную игру» и подтвердите EXE игры. Сам запуск установщика не отмечает игру установленной.</translation></message>
+    <message><source>Download the installer package first, then run the installation and add the game to My games.</source><translation>Сначала скачайте пакет установщика, затем установите игру и добавьте её в «Мои игры».</translation></message>
+    <message><source>The NAS is checking GitHub…</source><translation>NAS проверяет обновления на GitHub…</translation></message>
+    <message><source>The NAS is downloading the update…</source><translation>NAS скачивает обновление…</translation></message>
+    <message><source>The NAS could not check or cache the update. Try again later.</source><translation>NAS не удалось проверить или скачать обновление. Попробуйте позже.</translation></message>
+    <message><source>The NAS update check timed out. Try again later.</source><translation>Истекло время ожидания обновления на NAS. Попробуйте позже.</translation></message>
   </context>
 </TS>

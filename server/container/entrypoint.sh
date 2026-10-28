@@ -25,14 +25,16 @@ if [ -d /opt/ngs-client ]; then
 fi
 gosu tactic python3 /opt/tactic/tactic/src/bin/monitor.py &
 monitor_pid=$!
+gosu tactic python3 -m ngs_launcher_plugin.update_mirror &
+mirror_pid=$!
 apache2ctl -D FOREGROUND &
 apache_pid=$!
 cleanup() {
   trap - EXIT TERM INT
-  kill "$monitor_pid" "$apache_pid" 2>/dev/null || true
-  wait "$monitor_pid" "$apache_pid" 2>/dev/null || true
+  kill "$monitor_pid" "$apache_pid" "$mirror_pid" 2>/dev/null || true
+  wait "$monitor_pid" "$apache_pid" "$mirror_pid" 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'exit 0' TERM INT
-wait -n "$monitor_pid" "$apache_pid"
+wait -n "$monitor_pid" "$apache_pid" "$mirror_pid"
 exit 1

@@ -69,8 +69,8 @@ ApplicationWindow {
     readonly property string installationFilter: section === 1 && bridge.hideInstalled ? "missing" : currentFilters.installation || "all"
     readonly property string genreFilter: currentFilters.genre || ""
     readonly property int activeFilterCount: (installationFilter !== "all" ? 1 : 0) + (genreFilter ? 1 : 0)
-    readonly property var filterStatusKeys: section === 0 ? ["all", "unplayed", "unavailable"] : ["all", "installed", "missing"]
-    readonly property var filterStatusLabels: section === 0 ? [qsTranslate("NGS", "All games"), qsTranslate("NGS", "Not played yet"), qsTranslate("NGS", "Unavailable")] : section === 3 ? [qsTranslate("NGS", "All packages"), qsTranslate("NGS", "Downloaded"), qsTranslate("NGS", "Not downloaded")] : [qsTranslate("NGS", "All games"), qsTranslate("NGS", "Installed"), qsTranslate("NGS", "Not installed")]
+    readonly property var filterStatusKeys: section === 0 ? ["all", "unplayed", "unavailable"] : section === 3 ? ["all", "downloaded", "not_downloaded", "installed", "missing"] : ["all", "installed", "missing"]
+    readonly property var filterStatusLabels: section === 0 ? [qsTranslate("NGS", "All games"), qsTranslate("NGS", "Not played yet"), qsTranslate("NGS", "Unavailable")] : section === 3 ? [qsTranslate("NGS", "All packages"), qsTranslate("NGS", "Downloaded"), qsTranslate("NGS", "Not downloaded"), qsTranslate("NGS", "Game installed"), qsTranslate("NGS", "Game not installed")] : [qsTranslate("NGS", "All games"), qsTranslate("NGS", "Installed"), qsTranslate("NGS", "Not installed")]
     readonly property var filterSource: section === 1 ? bridge.catalogGames : sourceGames
     readonly property var filterGenres: Array.from(new Set(filterSource.map(game => String(game.genre || "").trim()).filter(value => value.length).concat(genreFilter ? [genreFilter] : []))).sort((a, b) => a.localeCompare(b))
     readonly property bool hasGames: displayGames.length > 0
@@ -82,7 +82,8 @@ ApplicationWindow {
     readonly property bool selectedQueued: bridge.downloadIds.indexOf(selected.id) >= 0
     readonly property bool selectedInstaller: section === 3 && hasGames
     readonly property bool installerReady: selectedInstaller && bridge.installerIds.indexOf(selected.id) >= 0
-    readonly property string primaryActionText: bridge.frozenIds.indexOf(selected.id) >= 0 || bridge.runningIds.indexOf(selected.id) >= 0 ? qsTranslate("NGS", "Resume") : selectedInstaller ? installerReady ? qsTranslate("NGS", "Install") : selectedQueued ? qsTranslate("NGS", "In downloads") : qsTranslate("NGS", "Download package") : selectedInstalled ? qsTranslate("NGS", "Play") : selectedQueued ? qsTranslate("NGS", "In downloads") : qsTranslate("NGS", "Download", "Копировать")
+    readonly property bool installerGameInstalled: selectedInstaller && !!selected.game_installed
+    readonly property string primaryActionText: bridge.frozenIds.indexOf(selected.id) >= 0 || bridge.runningIds.indexOf(selected.id) >= 0 ? qsTranslate("NGS", "Resume") : selectedInstaller ? installerReady ? installerGameInstalled ? qsTranslate("NGS", "Reinstall") : qsTranslate("NGS", "Install") : selectedQueued ? qsTranslate("NGS", "In downloads") : qsTranslate("NGS", "Download package") : selectedInstalled ? qsTranslate("NGS", "Play") : selectedQueued ? qsTranslate("NGS", "In downloads") : qsTranslate("NGS", "Download", "Копировать")
     readonly property bool selectedInstalled: bridge.installedIds.indexOf(selected.id) >= 0
     readonly property bool selectedRemoving: bridge.removingIds.indexOf(selected.id) >= 0
     readonly property bool selectedExternal: bridge.externalIds.indexOf(selected.id) >= 0
@@ -239,12 +240,15 @@ ApplicationWindow {
     function filterGames(collection, query, mode = installationFilter, genre = genreFilter) {
         const words = searchWords(query)
         if (!words.length && mode === "all" && !genre) return collection
-        const installed = new Set(section === 3 ? bridge.installerIds : bridge.installedIds)
+        const installed = new Set(bridge.installedIds)
         const played = new Set(bridge.playedIds), unavailable = new Set(bridge.unavailableIds)
         return collection.filter(game => {
             if (genre && String(game.genre || "").trim() !== genre) return false
-            if (mode === "installed" && !installed.has(game.id)) return false
-            if (mode === "missing" && installed.has(game.id)) return false
+            const gameInstalled = section === 3 ? !!game.game_installed : installed.has(game.id)
+            if (mode === "installed" && !gameInstalled) return false
+            if (mode === "missing" && gameInstalled) return false
+            if (mode === "downloaded" && !game.package_downloaded) return false
+            if (mode === "not_downloaded" && game.package_downloaded) return false
             if (mode === "unplayed" && played.has(game.id)) return false
             if (mode === "unavailable" && !unavailable.has(game.id)) return false
             const name = searchWords(game.name).join(" ")
@@ -760,15 +764,19 @@ ApplicationWindow {
                     }
                     Rectangle {
                         id: cardStatusBadge
-                        readonly property string statusText: window.bridge.frozenIds.indexOf(card.modelData.id) >= 0 ? qsTranslate("NGS", "FROZEN") : window.bridge.unavailableIds.indexOf(card.modelData.id) >= 0 ? qsTranslate("NGS", "UNAVAILABLE") : window.bridge.removingIds.indexOf(card.modelData.id) >= 0 ? qsTranslate("NGS", "REMOVING…") : window.bridge.playedIds.indexOf(card.modelData.id) < 0 ? qsTranslate("NGS", "NEW") : ""
+                        readonly property string statusText: window.section === 3 ? card.modelData.game_installed ? qsTranslate("NGS", "Game installed") : card.modelData.package_downloaded ? qsTranslate("NGS", "Downloaded") : qsTranslate("NGS", "Not downloaded") : window.bridge.frozenIds.indexOf(card.modelData.id) >= 0 ? qsTranslate("NGS", "FROZEN") : window.bridge.unavailableIds.indexOf(card.modelData.id) >= 0 ? qsTranslate("NGS", "UNAVAILABLE") : window.bridge.removingIds.indexOf(card.modelData.id) >= 0 ? qsTranslate("NGS", "REMOVING…") : window.bridge.playedIds.indexOf(card.modelData.id) < 0 ? qsTranslate("NGS", "NEW") : ""
                         anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 10
-                        width: Math.min(128, parent.width - 12); height: 28; radius: 5; color: uiTheme.themeColors.accent
-                        visible: statusText.length > 0 && (window.bridge.installedIds.indexOf(card.modelData.id) >= 0 || window.bridge.removingIds.indexOf(card.modelData.id) >= 0)
+                        width: Math.min(cardStatusLabel.implicitWidth + 20, parent.width - 20); height: cardStatusLabel.implicitHeight + 12; radius: 5
+                        color: window.section === 3 && !card.modelData.game_installed ? uiTheme.themeColors.base : uiTheme.themeColors.accent
+                        border.width: window.section === 3 ? 1 : 0; border.color: uiTheme.themeColors.accent
+                        visible: statusText.length > 0 && (window.section === 3 || window.bridge.installedIds.indexOf(card.modelData.id) >= 0 || window.bridge.removingIds.indexOf(card.modelData.id) >= 0)
                         Text {
+                            id: cardStatusLabel
                             objectName: "cardStatus-" + card.index
                             anchors.centerIn: parent
+                            width: Math.min(implicitWidth, parent.width - 16); wrapMode: Text.WordWrap
                             text: cardStatusBadge.statusText
-                            color: uiTheme.themeColors.accentText; font.pixelSize: Math.min(11, parent.width / 11); font.weight: Font.DemiBold
+                            color: window.section === 3 && !card.modelData.game_installed ? uiTheme.themeColors.text : uiTheme.themeColors.accentText; font.pixelSize: 11; font.weight: Font.DemiBold
                         }
                     }
                 }
@@ -1538,7 +1546,9 @@ ApplicationWindow {
                 Text { objectName: "detailsGameSize"; visible: window.selected.total_size !== undefined;
                     text: qsTranslate("NGS", "Game size: ") + installDestination.sizeLabel(window.selected.total_size); color: uiTheme.themeColors.accent; font.pixelSize: 17 * window.uiScale }
                 Text { text: window.selected.description; textFormat: Text.PlainText; width: Math.min(parent.width, 960 * window.toolScale); color: uiTheme.themeColors.text; font.pixelSize: 18 * window.toolScale; wrapMode: Text.WordWrap; lineHeight: 1.45 }
-                Text { text: window.selectedInstaller ? qsTranslate("NGS", "The entire installer package is downloaded. Install the game normally, then add its folder and confirm its executable. NGS keeps only a library entry for an independently installed game and does not manage its files.") : window.selectedUnavailable ? qsTranslate("NGS", "The folder or executable is unavailable. Connect the drive and refresh My games (") + window.hints.refresh + ")." : window.selectedRemoving ? qsTranslate("NGS", "Removal did not finish. You can retry it.") : window.selectedExternal ? qsTranslate("NGS", "Added without copying. Removing the library entry preserves the game files.") : window.selectedInstalled ? qsTranslate("NGS", "Installed on this device.") : window.selected.delivery === "on_request" || window.selected.manifest ? qsTranslate("NGS", "Ready to download.") : qsTranslate("NGS", "This game is not ready to download yet."); width: parent.width; wrapMode: Text.WordWrap; color: uiTheme.themeColors.muted; font.pixelSize: 14 * window.uiScale }
+                Text { objectName: "detailsInstallerStatus"; visible: window.selectedInstaller; width: parent.width; wrapMode: Text.WordWrap; color: uiTheme.themeColors.accent; font.pixelSize: 17 * window.uiScale
+                    text: (window.installerReady ? qsTranslate("NGS", "Package downloaded") : qsTranslate("NGS", "Package not downloaded")) + " · " + (window.installerGameInstalled ? qsTranslate("NGS", "Game installed") : qsTranslate("NGS", "Game not installed")) }
+                Text { text: window.selectedInstaller ? window.installerGameInstalled ? qsTranslate("NGS", "The game is available in My games. Downloading or removing the installer package does not change the installed game.") : window.installerReady ? qsTranslate("NGS", "Run the installer, then choose Add an installed game and confirm the game's executable. Opening the installer alone does not mark the game as installed.") : qsTranslate("NGS", "Download the installer package first, then run the installation and add the game to My games.") : window.selectedUnavailable ? qsTranslate("NGS", "The folder or executable is unavailable. Connect the drive and refresh My games (") + window.hints.refresh + ")." : window.selectedRemoving ? qsTranslate("NGS", "Removal did not finish. You can retry it.") : window.selectedExternal ? qsTranslate("NGS", "Added without copying. Removing the library entry preserves the game files.") : window.selectedInstalled ? qsTranslate("NGS", "Installed on this device.") : window.selected.delivery === "on_request" || window.selected.manifest ? qsTranslate("NGS", "Ready to download.") : qsTranslate("NGS", "This game is not ready to download yet."); width: parent.width; wrapMode: Text.WordWrap; color: uiTheme.themeColors.muted; font.pixelSize: 14 * window.uiScale }
                 Text { objectName: "detailsExecutable"; visible: window.detailsMore && window.selectedInstalled;
                     text: visible ? "EXE: " + window.bridge.executableLocation(window.selected.id) : ""; textFormat: Text.PlainText; width: parent.width; wrapMode: Text.WrapAnywhere; color: uiTheme.themeColors.muted; font.pixelSize: 13 * window.uiScale }
             }
@@ -1556,7 +1566,7 @@ ApplicationWindow {
             }
             ActionButton {
                 id: detailsAdd; objectName: "detailsAddInstallerGame"
-                visible: window.installerReady; enabled: !window.bridge.operationBusy
+                visible: window.installerReady && !window.installerGameInstalled; enabled: !window.bridge.operationBusy
                 text: qsTranslate("NGS", "Add an installed game"); highlighted: window.detailsAction === 6
                 width: 285 * window.uiScale; height: Math.max(48, 50 * window.uiScale)
                 onClicked: window.addInstalledGame()

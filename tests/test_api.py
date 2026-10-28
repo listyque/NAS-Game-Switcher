@@ -20,6 +20,19 @@ from tools.metadata_api import protocol_source, metadata_web, claim_device, rele
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_update_check_is_bounded_authenticated_and_does_not_take_transfer_lease(self):
+        for action in ('check', 'refresh', 'status'):
+            value = dict(operation='updates', value=dict(action=action))
+            self.assertEqual(validate_payload(value), ('updates', dict(action=action)))
+            namespace = {}; exec(protocol_source(), namespace)
+            self.assertEqual(namespace['validate_payload'](value), validate_payload(value))
+        for value in ({}, {'action': 'delete'}, {'action': 'check', 'url': 'https://evil.invalid'}, 'check'):
+            with self.assertRaises(ValueError): validate_payload(dict(operation='updates', value=value))
+        previous = dict(busy_until=9999, busy_nonce='game-transfer')
+        state = claim_state(previous, 'update-nonce', 'updates', 1000)
+        self.assertEqual(state['busy_nonce'], 'game-transfer')
+        with self.assertRaises(ApiRejected): claim_state(state, 'update-nonce', 'updates', 1001)
+
     def test_legacy_key_alone_cannot_open_api_and_expired_or_other_server_account_is_rejected(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as root:
             storage = PortableStorage(root)
